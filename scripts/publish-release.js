@@ -53,9 +53,46 @@ const version = packageJson.version;
 
 info(`Preparando release v${version}...`);
 
-// Verificar que existe GH_TOKEN
-if (!process.env.GH_TOKEN) {
-  error('No se encontró GH_TOKEN en las variables de entorno');
+// Verificar que gh está disponible o GH_TOKEN está configurado
+let ghAvailable = false;
+try {
+  // Intentar encontrar gh en la ruta estándar de Windows
+  const { execSync } = require('child_process');
+  const os = require('os');
+  const platform = os.platform();
+  
+  if (platform === 'win32') {
+    // Buscar gh en la ruta estándar de Windows
+    const ghPath = 'C:\\Program Files\\GitHub CLI\\gh.exe';
+    if (fs.existsSync(ghPath)) {
+      ghAvailable = true;
+      // Sobrescribir el execSync para usar la ruta completa
+      const originalExecSync = execSync;
+      global.ghPath = ghPath;
+    } else {
+      // Intentar ejecutar gh directamente (puede estar en PATH después de reiniciar)
+      try {
+        execSync('gh --version', { stdio: 'ignore' });
+        ghAvailable = true;
+      } catch (e) {
+        ghAvailable = false;
+      }
+    }
+  } else {
+    try {
+      execSync('gh --version', { stdio: 'ignore' });
+      ghAvailable = true;
+    } catch (e) {
+      ghAvailable = false;
+    }
+  }
+} catch (e) {
+  ghAvailable = false;
+}
+
+if (!ghAvailable && !process.env.GH_TOKEN) {
+  warning('gh CLI no está disponible en PATH. Intentando continuar...');
+  warning('Si falla, reinicia PowerShell o configura GH_TOKEN como variable de entorno');
 }
 
 // Verificar que existen los archivos de build
@@ -96,15 +133,16 @@ if (fs.existsSync(changelogPath)) {
   }
 }
 
-// Crear tag si no existe
+// Crear tag si no existe (opcional, gh release create puede crear el tag)
 info('Verificando tag de Git...');
 try {
+  // Intentar crear el tag localmente (puede fallar si ya existe, no importa)
   execSync(`git tag v${version}`, { stdio: 'ignore' });
-  execSync(`git push origin v${version}`, { stdio: 'inherit' });
-  success(`Tag v${version} creado y publicado`);
-} catch (err) {
-  warning('El tag ya existe o no se pudo crear');
+  info(`Tag v${version} creado localmente`);
+} catch (e) {
+  info('El tag ya existe localmente');
 }
+// No hacemos push del tag, gh release create lo manejará
 
 // Crear release con GitHub CLI
 info('Creando release en GitHub...');
@@ -115,13 +153,23 @@ try {
   fs.writeFileSync(notesFile, releaseNotes);
 
   // Crear release
-  const cmd = `gh release create v${version} ` +
+  const ghCommand = global.ghPath || 'gh';
+  
+  // Configurar entorno con GH_TOKEN si está disponible
+  const env = { ...process.env };
+  if (process.env.GH_TOKEN) {
+    env.GH_TOKEN = process.env.GH_TOKEN;
+  }
+  
+  // Usar --target para especificar la rama (main) en caso de que el tag no esté en el remoto
+  const cmd = `"${ghCommand}" release create v${version} ` +
     `--title "v${version} - Actualización" ` +
     `--notes-file "${notesFile}" ` +
+    `--target main ` +
     `"${setupFile}" ` +
     `"${latestYml}"`;
 
-  execSync(cmd, { stdio: 'inherit' });
+  execSync(cmd, { stdio: 'inherit', shell: true, env: env });
   
   // Limpiar archivo temporal
   fs.unlinkSync(notesFile);
