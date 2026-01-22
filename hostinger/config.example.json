@@ -1,0 +1,14 @@
+{
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "tu_usuario_mysql",
+    "password": "tu_contraseña",
+    "database": "aserradero_db"
+  },
+  "supabase": {
+    "url": "https://uoisgayimsbqugablshq.supabase.co",
+    "anonKey": "tu_supabase_key"
+  }
+}
+

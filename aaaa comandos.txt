@@ -1,0 +1,75 @@
+
+ssh root@31.97.246.42
+123Pitufo244955#
+
+
+
+# Ver backups locales
+ls -lh /home/backups/aserradero/
+
+# Ver backups en Google Drive
+rclone ls gdrive:Backups/Aserradero/
+
+# Hacer backup manual
+/home/backups/backup_aserradero.sh
+
+# Ver log de backups
+cat /home/backups/backup.log
+
+# Ver cron programado
+crontab -l
+
+
+
+
+# 1. Borrar datos actuales
+mysql -u aserradero_user -p'Aserradero2025#' aserradero_db -e "SET FOREIGN_KEY_CHECKS=0; TRUNCATE pagos; TRUNCATE remito_articulos; TRUNCATE remitos; TRUNCATE articulos; TRUNCATE clientes; SET FOREIGN_KEY_CHECKS=1;"
+
+# 2. Descargar backup de Google Drive
+rclone copy gdrive:Backups/Aserradero/aserradero_backup_20251205_022104.sql.gz /tmp/
+
+# 3. Descomprimir
+gunzip /tmp/aserradero_backup_20251205_022104.sql.gz
+
+# 4. Restaurar
+mysql -u aserradero_user -p'Aserradero2025#' aserradero_db < /tmp/aserradero_backup_20251205_022104.sql
+
+# 5. Verificar
+mysql -u aserradero_user -p'Aserradero2025#' aserradero_db -e "SELECT COUNT(*) as clientes FROM clientes; SELECT COUNT(*) as remitos FROM remitos;"
+
+# 6. Limpiar
+rm /tmp/aserradero_backup_20251205_022104.sql
+
+echo "✅ Restaurado desde Google Drive!"
+
+
+
+
+
+
+
+
+
+Resumen de scripts
+node Script	Qué hace
+scripts/borrar-imagenes-storage.js	Solo borra imágenes del Storage
+scripts/limpiar-todo-con-imagenes.js	Borra datos + imágenes + reinicia contadores
+supabase/limpiar_todo_reiniciar.sql	Solo borra datos SQL (no imágenes)
+
+
+
+
+# 1. Ejecutar script de restauración
+node scripts/restaurar-backup-completo.js "C:\Users\ozozo\Backups_Aserradero\Backups_Aserradero\PONERCARPETADEBACKUP"
+
+# 2. Escribir "SI" cuando pregunte
+
+# 3. Ejecutar el SQL en Supabase SQL Editor (el script te lo indicará)
+
+# 4. Escribir "s" cuando pregunte si ya ejecutaste el SQL
+
+# 5. ¡Listo! Las imágenes se subirán automáticamente
+
+
+
+node scripts/subir-imagenes-backup.js "C:\Users\ozozo\Backups_Aserradero\Backups_Aserradero\PONERCARPETADEBACKUP"

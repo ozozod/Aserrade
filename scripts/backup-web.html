@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup Automático - Aserradero</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .config-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .config-section h2 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #0c5460;
+        }
+        
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💾 Backup Automático</h1>
+        <p class="subtitle">Genera un backup completo de la base de datos</p>
+        
+        <div class="config-section">
+            <h2>⚙️ Configuración</h2>
+            <div class="input-group">
+                <label for="supabaseUrl">URL de Supabase:</label>
+                <input type="text" id="supabaseUrl" placeholder="https://xxxxx.supabase.co" />
+            </div>
+            <div class="input-group">
+                <label for="supabaseKey">Clave Anónima de Supabase:</label>
+                <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+            </div>
+        </div>
+        
+        <button id="btnBackup" onclick="generarBackup()">
+            💾 Generar Backup Ahora
+        </button>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="info-box">
+            <strong>ℹ️ Información:</strong>
+            <ul style="margin-top: 10px; padding-left: 20px;">
+                <li>El backup se descargará automáticamente</li>
+                <li>Incluye: clientes, artículos, remitos, remito_articulos y pagos</li>
+                <li>Guarda el archivo en un lugar seguro (Google Drive, USB, etc.)</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Cargar configuración guardada
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlGuardada = localStorage.getItem('backup_supabase_url');
+            const keyGuardada = localStorage.getItem('backup_supabase_key');
+            
+            if (urlGuardada) document.getElementById('supabaseUrl').value = urlGuardada;
+            if (keyGuardada) document.getElementById('supabaseKey').value = keyGuardada;
+        });
+
+        function mostrarStatus(mensaje, tipo) {
+            const status = document.getElementById('status');
+            status.className = `status ${tipo}`;
+            status.textContent = mensaje;
+        }
+
+        function generarBackupTabla(nombreTabla, datos) {
+            if (!datos || datos.length === 0) {
+                return `-- Tabla ${nombreTabla}: Sin datos\n\n`;
+            }
+            
+            const columnas = Object.keys(datos[0]);
+            const columnasStr = columnas.join(', ');
+            
+            let sql = `-- ============================================\n`;
+            sql += `-- BACKUP DE TABLA: ${nombreTabla}\n`;
+            sql += `-- Total de registros: ${datos.length}\n`;
+            sql += `-- ============================================\n\n`;
+            sql += `-- DELETE FROM ${nombreTabla};\n\n`;
+            sql += `-- Insertar datos\n`;
+            
+            datos.forEach(registro => {
+                const valores = columnas.map(col => {
+                    const valor = registro[col];
+                    if (valor === null || valor === undefined) {
+                        return 'NULL';
+                    }
+                    if (typeof valor === 'string') {
+                        return `'${valor.replace(/'/g, "''")}'`;
+                    }
+                    if (valor instanceof Date) {
+                        return `'${valor.toISOString()}'`;
+                    }
+                    if (typeof valor === 'boolean') {
+                        return valor ? 'true' : 'false';
+                    }
+                    return valor;
+                });
+                
+                sql += `INSERT INTO ${nombreTabla} (${columnasStr}) VALUES (${valores.join(', ')});\n`;
+            });
+            
+            sql += `\n`;
+            return sql;
+        }
+
+        async function generarBackup() {
+            const url = document.getElementById('supabaseUrl').value.trim();
+            const key = document.getElementById('supabaseKey').value.trim();
+            
+            if (!url || !key) {
+                mostrarStatus('❌ Por favor completa la URL y la clave de Supabase', 'error');
+                return;
+            }
+            
+            // Guardar configuración
+            localStorage.setItem('backup_supabase_url', url);
+            localStorage.setItem('backup_supabase_key', key);
+            
+            const btn = document.getElementById('btnBackup');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Generando backup...';
+            
+            mostrarStatus('⏳ Conectando con Supabase...', 'info');
+            
+            try {
+                // Crear cliente de Supabase
+                const supabase = window.supabase.createClient(url, key);
+                
+                const fecha = new Date();
+                const fechaStr = fecha.toISOString().split('T')[0];
+                const horaStr = fecha.toTimeString().split(' ')[0].replace(/:/g, '');
+                const nombreArchivo = `backup_${fechaStr}_${horaStr}.sql`;
+                
+                mostrarStatus('📦 Generando backup SQL...', 'info');
+                
+                let sqlContent = `-- =====================================================\n`;
+                sqlContent += `-- BACKUP AUTOMÁTICO DESDE WEB\n`;
+                sqlContent += `-- FECHA: ${fechaStr}\n`;
+                sqlContent += `-- HORA: ${fecha.toLocaleString('es-AR')}\n`;
+                sqlContent += `-- =====================================================\n\n`;
+                
+                const tablas = ['clientes', 'articulos', 'remitos', 'remito_articulos', 'pagos'];
+                const tablasIncluidas = [];
+                let totalRegistros = 0;
+                
+                for (const tabla of tablas) {
+                    mostrarStatus(`📦 Respaldando: ${tabla}...`, 'info');
+                    
+                    try {
+                        const { data, error } = await supabase
+                            .from(tabla)
+                            .select('*')
+                            .order('id', { ascending: true });
+                        
+                        if (error) {
+                            console.error(`Error en ${tabla}:`, error);
+                            sqlContent += `-- ERROR obteniendo datos de ${tabla}: ${error.message}\n\n`;
+                            continue;
+                        }
+                        
+                        if (data && data.length > 0) {
+                            const sqlTabla = generarBackupTabla(tabla, data);
+                            sqlContent += sqlTabla;
+                            tablasIncluidas.push(tabla);
+                            totalRegistros += data.length;
+                        } else {
+                            sqlContent += `-- Tabla ${tabla}: Sin datos\n\n`;
+                        }
+                    } catch (error) {
+                        console.error(`Error procesando ${tabla}:`, error);
+                        sqlContent += `-- ERROR en tabla ${tabla}: ${error.message}\n\n`;
+                    }
+                }
+                
+                sqlContent += `-- =====================================================\n`;
+                sqlContent += `-- FIN DEL BACKUP\n`;
+                sqlContent += `-- Total de tablas: ${tablasIncluidas.length}\n`;
+                sqlContent += `-- Total de registros: ${totalRegistros}\n`;
+                sqlContent += `-- =====================================================\n`;
+                
+                // Descargar archivo
+                mostrarStatus('💾 Descargando archivo...', 'info');
+                
+                const blob = new Blob([sqlContent], { type: 'application/sql' });
+                const urlDescarga = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = urlDescarga;
+                a.download = nombreArchivo;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(urlDescarga);
+                
+                const tamañoMB = (sqlContent.length / 1024 / 1024).toFixed(2);
+                
+                mostrarStatus(
+                    `✅ Backup generado exitosamente!\n` +
+                    `📁 Archivo: ${nombreArchivo}\n` +
+                    `📊 Tamaño: ${tamañoMB} MB\n` +
+                    `📋 Tablas: ${tablasIncluidas.join(', ')}\n` +
+                    `📈 Registros: ${totalRegistros}\n` +
+                    `\n💡 El archivo se descargó automáticamente`,
+                    'success'
+                );
+                
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarStatus(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '💾 Generar Backup Ahora';
+            }
+        }
+    </script>
+</body>
+</html>
+

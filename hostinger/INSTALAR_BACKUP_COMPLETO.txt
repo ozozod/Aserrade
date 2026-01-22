@@ -1,0 +1,98 @@
+# ================================================
+# INSTALACIÓN COMPLETA DE BACKUP - COPIAR Y PEGAR
+# ================================================
+
+# PASO 1: Conectar por SSH
+ssh root@31.97.246.42
+# Contraseña: 123Pitufo244955#
+
+# PASO 2: Copiar y pegar TODO este bloque:
+
+mkdir -p /home/backups/aserradero && cat > /home/backups/backup_aserradero.sh << 'SCRIPT'
+#!/bin/bash
+DB_NAME="aserradero_db"
+DB_USER="aserradero_user"
+DB_PASS="Aserradero2025#"
+BACKUP_DIR="/home/backups/aserradero"
+DAYS_TO_KEEP=90
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+BACKUP_FILE="$BACKUP_DIR/aserradero_backup_$TIMESTAMP.sql.gz"
+LOG="/home/backups/backup.log"
+
+echo "$(date): Iniciando backup..." >> $LOG
+mysqldump -u $DB_USER -p$DB_PASS $DB_NAME 2>/dev/null | gzip > $BACKUP_FILE
+
+if [ -s $BACKUP_FILE ]; then
+    SIZE=$(du -h $BACKUP_FILE | cut -f1)
+    echo "$(date): ✅ OK - $SIZE - $BACKUP_FILE" >> $LOG
+    find $BACKUP_DIR -name "*.sql.gz" -mtime +$DAYS_TO_KEEP -delete
+    
+    # Google Drive (si está configurado)
+    if command -v rclone &> /dev/null && rclone listremotes 2>/dev/null | grep -q "gdrive:"; then
+        rclone copy $BACKUP_FILE gdrive:Backups/Aserradero/ 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo "$(date): ☁️ Subido a Google Drive" >> $LOG
+        fi
+    fi
+else
+    echo "$(date): ❌ ERROR" >> $LOG
+fi
+SCRIPT
+
+chmod +x /home/backups/backup_aserradero.sh
+
+echo "✅ Script creado. Ejecutando backup de prueba..."
+/home/backups/backup_aserradero.sh
+
+echo ""
+echo "📁 Backups:"
+ls -lh /home/backups/aserradero/
+
+# Configurar CRON: 7:00 AM servidor = 4:00 AM Argentina
+(crontab -l 2>/dev/null | grep -v backup_aserradero; echo "0 7 * * * /home/backups/backup_aserradero.sh") | crontab -
+
+echo ""
+echo "⏰ CRON configurado (4:00 AM Argentina / 7:00 AM servidor):"
+crontab -l | grep backup
+
+echo ""
+echo "✅ ¡INSTALACIÓN COMPLETADA!"
+echo ""
+echo "📋 Configuración:"
+echo "   Hora: 4:00 AM Argentina (7:00 servidor)"
+echo "   Retención: 90 días"
+echo "   Ubicación: /home/backups/aserradero/"
+
+# ================================================
+# PASO 3 (OPCIONAL): Configurar Google Drive
+# ================================================
+
+# 3.1 Instalar rclone:
+curl https://rclone.org/install.sh | sudo bash
+
+# 3.2 Configurar Google Drive:
+rclone config
+# - Elegir: n (new remote)
+# - Nombre: gdrive
+# - Tipo: 18 (Google Drive) o buscar "drive"
+# - Client ID: dejar vacío (Enter)
+# - Client Secret: dejar vacío (Enter)
+# - Scope: 1 (Full access)
+# - Root folder: dejar vacío (Enter)
+# - Service Account: dejar vacío (Enter)
+# - Auto config: n (no, porque es servidor remoto)
+# - Te dará un link, abrilo en tu navegador, 
+#   autorizá con tu cuenta de Google,
+#   copiá el código y pegalo en la terminal
+# - Team Drive: n
+# - Confirmar: y
+
+# 3.3 Probar Google Drive:
+rclone lsd gdrive:
+
+# 3.4 Hacer backup manual con Google Drive:
+/home/backups/backup_aserradero.sh
+
+# 3.5 Verificar que subió:
+rclone ls gdrive:Backups/Aserradero/
+

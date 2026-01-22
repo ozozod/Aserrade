@@ -1,0 +1,475 @@
+.App {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+}
+
+.main-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 220px;
+  background-color: #2c3e50;
+  color: white;
+  padding: 20px 0;
+  overflow-y: auto;
+}
+
+.nav-menu {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-menu button {
+  background: none;
+  border: none;
+  color: white;
+  padding: 15px 20px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+  border-left: 4px solid transparent;
+}
+
+.nav-menu button:hover {
+  background-color: #34495e;
+}
+
+.nav-menu button.active {
+  background-color: #3498db;
+  border-left-color: #2980b9;
+  font-weight: bold;
+}
+
+.content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background-color: #f5f5f5;
+  transition: background-color 0.3s ease;
+}
+
+/* Modo Oscuro - Content */
+.App.dark .content {
+  background-color: #1a1a1a;
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Modo Oscuro - Cards */
+.App.dark .card {
+  background: #2d2d2d;
+  color: #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.card h2 {
+  margin-bottom: 20px;
+  color: #2c3e50;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+  transition: color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Modo Oscuro - Card Headings */
+.App.dark .card h2 {
+  color: #e0e0e0;
+  border-bottom-color: #5dade2;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #34495e;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+.btn-primary {
+  background-color: #3498db;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #2980b9;
+}
+
+.btn-success {
+  background-color: #27ae60;
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: #229954;
+}
+
+.btn-danger {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #c0392b;
+}
+
+.btn-secondary {
+  background-color: #95a5a6;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #7f8c8d;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+table th,
+table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  font-size: 13px;
+}
+
+table th {
+  background-color: #f8f9fa !important;
+  color: #333 !important;
+  font-weight: bold;
+  font-size: 12px;
+  padding: 8px 6px;
+  border-bottom: 2px solid #dee2e6 !important;
+}
+
+table tr {
+  background-color: white;
+}
+
+table tr:hover {
+  background-color: #e8f4f8 !important;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+/* Para tablas en Reportes - más compactas y responsivas */
+.table-container {
+  width: 100%;
+  max-width: 100%;
+}
+
+.table-container table {
+  font-size: 12px;
+  width: 100%;
+}
+
+.table-container table th,
+.table-container table td {
+  padding: 6px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.table-container table th {
+  font-size: 11px;
+  padding: 8px 6px;
+  white-space: nowrap;
+}
+
+/* Permitir que el contenido largo se ajuste en las celdas */
+.table-container table td:nth-child(3) {
+  white-space: normal;
+  word-wrap: break-word;
+  max-width: 200px;
+}
+
+.table-container table .text-right {
+  white-space: nowrap;
+}
+
+/* Mejorar el hover para filas de remitos */
+.table-container table tr.remito-row {
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.badge-success {
+  background-color: #a8e6cf;
+  color: #155724;
+}
+
+.badge-warning {
+  background-color: #ffc107;
+  color: #000;
+  font-weight: 600;
+}
+
+.badge-danger {
+  background-color: #dc3545;
+  color: #fff;
+  font-weight: 600;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.mt-20 {
+  margin-top: 20px;
+}
+
+.mb-20 {
+  margin-bottom: 20px;
+}
+
+/* ========================================
+   ESTILOS MODO OSCURO
+   ======================================== */
+
+/* Modo Oscuro - Sidebar */
+.App.dark .sidebar {
+  background-color: #1e1e1e;
+  border-right: 1px solid #333;
+}
+
+.App.dark .nav-menu button:hover {
+  background-color: #333;
+}
+
+.App.dark .nav-menu button.active {
+  background-color: #4a90e2;
+  border-left-color: #357abd;
+}
+
+/* Modo Oscuro - Form Labels */
+.App.dark .form-group label {
+  color: #e0e0e0;
+}
+
+/* Modo Oscuro - Inputs, Selects, Textareas */
+.App.dark .form-group input,
+.App.dark .form-group select,
+.App.dark .form-group textarea {
+  background-color: #3a3a3a;
+  color: #e0e0e0;
+  border-color: #555;
+}
+
+.App.dark .form-group input:focus,
+.App.dark .form-group select:focus,
+.App.dark .form-group textarea:focus {
+  border-color: #5dade2;
+  box-shadow: 0 0 0 2px rgba(93, 173, 226, 0.2);
+  background-color: #404040;
+}
+
+.App.dark .form-group input::placeholder,
+.App.dark .form-group textarea::placeholder {
+  color: #888;
+}
+
+/* Modo Oscuro - Tablas */
+.App.dark table {
+  color: #e0e0e0;
+}
+
+.App.dark table th {
+  background-color: #404040 !important;
+  color: #e0e0e0 !important;
+  border-bottom: 1px solid #555;
+}
+
+.App.dark table tr {
+  background-color: #2d2d2d !important;
+}
+
+.App.dark table td {
+  border-bottom: 1px solid #444;
+  color: #e0e0e0 !important;
+  background-color: #2d2d2d !important;
+}
+
+.App.dark table tr:hover {
+  background-color: #333 !important;
+}
+
+.App.dark table tr:hover td {
+  background-color: #333 !important;
+}
+
+/* Modo Oscuro - Botones (mantener colores pero ajustar brillo) */
+.App.dark .btn-primary {
+  background-color: #4a90e2;
+  color: white !important;
+}
+
+.App.dark .btn-primary:hover {
+  background-color: #357abd;
+  color: white !important;
+}
+
+.App.dark .btn-success {
+  background-color: #2ecc71;
+  color: white !important;
+}
+
+.App.dark .btn-success:hover {
+  background-color: #27ae60;
+  color: white !important;
+}
+
+.App.dark .btn-danger {
+  background-color: #e74c3c;
+  color: white !important;
+}
+
+.App.dark .btn-danger:hover {
+  background-color: #c0392b;
+  color: white !important;
+}
+
+.App.dark .btn-secondary {
+  background-color: #7f8c8d;
+}
+
+.App.dark .btn-secondary:hover {
+  background-color: #6c7a7b;
+}
+
+/* Modo Oscuro - Badges */
+.App.dark .badge-success {
+  background-color: #27ae60;
+  color: white;
+}
+
+.App.dark .badge-warning {
+  background-color: #f39c12;
+  color: white;
+}
+
+.App.dark .badge-danger {
+  background-color: #e74c3c;
+  color: white;
+}
+
+/* Modo Oscuro - Scrollbar (Webkit browsers) */
+.App.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.App.dark ::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.App.dark ::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 5px;
+}
+
+.App.dark ::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Modo Oscuro - Botones de expandir/contraer en tablas */
+.App.dark table button,
+.App.dark .table-container button {
+  color: #5dade2 !important;
+}
+
+/* Modo Oscuro - Botones con fondo transparente (flechas de expandir) */
+.App.dark button[style*="background: transparent"],
+.App.dark button[style*="background:transparent"],
+.App.dark button[style*="background-color: transparent"],
+.App.dark button[style*="background-color:transparent"] {
+  color: #5dade2 !important;
+}
+
+/* Modo Oscuro - Todos los botones dentro de cards */
+.App.dark .card button {
+  color: inherit;
+}
+
+.App.dark .card table button,
+.App.dark .card .table-container button {
+  color: #5dade2 !important;
+}
+
+/* Asegurar que los botones btn-primary siempre tengan texto blanco */
+.App.dark .card table .btn-primary,
+.App.dark .card .table-container .btn-primary,
+.App.dark .btn-primary {
+  color: white !important;
+}
+

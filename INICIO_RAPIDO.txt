@@ -1,0 +1,70 @@
+═══════════════════════════════════════════════════════════════════
+   🚀 SISTEMA DE ACTUALIZACIONES AUTOMÁTICAS - INICIO RÁPIDO
+═══════════════════════════════════════════════════════════════════
+
+📦 PASO 1: INSTALAR DEPENDENCIAS (1 vez)
+────────────────────────────────────────────────────────────────────
+cd "C:\Users\ozozo\Documents\aaaav2 audi"
+npm install
+
+
+🔐 PASO 2: CREAR REPOSITORIO EN GITHUB (1 vez)
+────────────────────────────────────────────────────────────────────
+1. Ir a: https://github.com/new
+2. Repository name: aserradero-v2
+3. Private
+4. Create repository
+
+
+🔗 PASO 3: CONECTAR CON GITHUB (1 vez)
+────────────────────────────────────────────────────────────────────
+git init
+git add .
+git commit -m "feat: v2.0.1 con actualizaciones automáticas"
+git remote add origin https://github.com/TU_USUARIO/aserradero-v2.git
+git branch -M main
+git push -u origin main
+
+
+⚙️ PASO 4: CONFIGURAR TU USUARIO EN package.json (1 vez)
+────────────────────────────────────────────────────────────────────
+Editar package.json:
+- Línea 7: "url": "https://github.com/TU_USUARIO/aserradero-v2.git"
+- Línea 122: "owner": "TU_USUARIO"
+
+
+🛠️ PASO 5: INSTALAR GITHUB CLI (1 vez)
+────────────────────────────────────────────────────────────────────
+Descargar: https://cli.github.com/
+Luego: gh auth login
+
+
+═══════════════════════════════════════════════════════════════════
+   📝 PUBLICAR UN NUEVO PARCHE (Cada vez que corrijas algo)
+═══════════════════════════════════════════════════════════════════
+
+1️⃣ Incrementar versión:
+   node scripts/bump-version.js patch
+
+2️⃣ Editar CHANGELOG.md:
+   - Documentar qué se corrigió/agregó
+
+3️⃣ Commit:
+   git add .
+   git commit -m "fix: descripción del cambio"
+   git push
+
+4️⃣ Build:
+   npm run build:win
+
+5️⃣ Publicar:
+   node scripts/publish-release.js
+
+
+═══════════════════════════════════════════════════════════════════
+   ✅ ¡LISTO! Los usuarios se actualizarán automáticamente
+═══════════════════════════════════════════════════════════════════
+
+📖 Ver guía completa: docs/GUIA_ACTUALIZACIONES.md
+📋 Ver cambios: CHANGELOG.md
+📄 Resumen: README_ACTUALIZACIONES.md

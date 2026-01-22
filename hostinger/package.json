@@ -1,0 +1,16 @@
+{
+  "name": "migracion-hostinger",
+  "version": "1.0.0",
+  "description": "Scripts para migrar datos de Supabase a Hostinger",
+  "main": "migrar_datos_supabase_a_hostinger.js",
+  "scripts": {
+    "migrar": "node migrar_datos_supabase_a_hostinger.js",
+    "test-connection": "node test_connection.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.6.5",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  }
+}
+
