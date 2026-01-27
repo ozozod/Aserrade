@@ -744,6 +744,16 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
 };
 
 export const exportResumenGeneralExcel = async (deudasClientes) => {
+  if (!deudasClientes || deudasClientes.length === 0) {
+    throw new Error('No hay datos de deudas para exportar');
+  }
+  
+  const clientesConDeuda = deudasClientes.filter(c => (c.deuda || 0) > 0);
+  
+  if (clientesConDeuda.length === 0) {
+    throw new Error('No hay clientes con deuda para exportar');
+  }
+  
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Aserradero App';
   workbook.created = new Date();
@@ -785,7 +795,7 @@ export const exportResumenGeneralExcel = async (deudasClientes) => {
   let row = 5;
   let totalDeuda = 0;
   
-  deudasClientes.filter(c => c.deuda > 0).forEach((cliente, index) => {
+  clientesConDeuda.forEach((cliente, index) => {
     sheet.getCell(`A${row}`).value = cliente.nombre;
     sheet.getCell(`A${row}`).font = { bold: true, size: 11 };
     sheet.getCell(`A${row}`).border = borderStyle;

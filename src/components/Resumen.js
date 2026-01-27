@@ -21,6 +21,7 @@ function Resumen() {
   const [resumenAnterior, setResumenAnterior] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exportandoPDF, setExportandoPDF] = useState(false);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
   const [deudasClientes, setDeudasClientes] = useState([]);
   
   // Estados para filtros de período
@@ -44,17 +45,21 @@ function Resumen() {
         const deudas = await Promise.all(clientes.map(async (cliente) => {
           try {
             const cuenta = await supabaseService.getCuentaCorriente(cliente.id);
+            // getCuentaCorriente devuelve { totales: { total_pendiente: ... } }
+            const deuda = cuenta?.totales?.total_pendiente || 0;
             return {
               nombre: cliente.nombre,
-              deuda: cuenta.totalPendiente || 0
+              deuda: deuda
             };
-          } catch {
+          } catch (error) {
+            console.error(`Error cargando deuda para cliente ${cliente.nombre}:`, error);
             return { nombre: cliente.nombre, deuda: 0 };
           }
         }));
         setDeudasClientes(deudas.sort((a, b) => b.deuda - a.deuda));
       } catch (error) {
         console.error('Error cargando deudas:', error);
+        setDeudasClientes([]);
       }
     };
     cargarDeudas();
@@ -290,37 +295,48 @@ function Resumen() {
                 <button
                   className="btn btn-danger"
                   onClick={async () => {
+                    if (deudasClientes.length === 0) {
+                      alertNoBloqueante('No hay deudas para exportar', 'warning');
+                      return;
+                    }
                     setExportandoPDF(true);
                     try {
-                  await exportResumenGeneralPDF(deudasClientes);
-                  alert('✅ Reporte de Deudas PDF generado');
+                      await exportResumenGeneralPDF(deudasClientes);
+                      alertNoBloqueante('✅ Reporte de Deudas PDF generado exitosamente', 'success');
                     } catch (error) {
                       console.error('Error generando PDF:', error);
-                  alert('❌ Error al generar PDF');
+                      alertNoBloqueante('❌ Error al generar PDF. Intenta nuevamente.', 'error');
                     } finally {
                       setExportandoPDF(false);
                     }
                   }}
-              disabled={exportandoPDF || deudasClientes.length === 0}
-              style={{ padding: '8px 15px', fontSize: '12px' }}
+                  disabled={exportandoPDF || exportandoExcel || deudasClientes.length === 0}
+                  style={{ padding: '8px 15px', fontSize: '12px' }}
                 >
-              {exportandoPDF ? '⏳ Generando...' : '📄 Deudas PDF'}
+                  {exportandoPDF ? '⏳ Generando PDF...' : '📄 Deudas PDF'}
                 </button>
                 <button
                   className="btn btn-success"
                   onClick={async () => {
+                    if (deudasClientes.length === 0) {
+                      alertNoBloqueante('No hay deudas para exportar', 'warning');
+                      return;
+                    }
+                    setExportandoExcel(true);
                     try {
-                  await exportResumenGeneralExcel(deudasClientes);
-                  alert('✅ Reporte de Deudas Excel generado');
+                      await exportResumenGeneralExcel(deudasClientes);
+                      alertNoBloqueante('✅ Reporte de Deudas Excel generado exitosamente', 'success');
                     } catch (error) {
                       console.error('Error generando Excel:', error);
-                  alert('❌ Error al generar Excel');
+                      alertNoBloqueante('❌ Error al generar Excel. Intenta nuevamente.', 'error');
+                    } finally {
+                      setExportandoExcel(false);
                     }
                   }}
-              disabled={deudasClientes.length === 0}
-              style={{ padding: '8px 15px', fontSize: '12px' }}
+                  disabled={exportandoPDF || exportandoExcel || deudasClientes.length === 0}
+                  style={{ padding: '8px 15px', fontSize: '12px' }}
                 >
-              📊 Deudas Excel
+                  {exportandoExcel ? '⏳ Generando Excel...' : '📊 Deudas Excel'}
                 </button>
           </div>
         </div>

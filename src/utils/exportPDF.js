@@ -628,10 +628,18 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
 };
 
 export const exportResumenGeneralPDF = async (deudasClientes) => {
+  if (!deudasClientes || deudasClientes.length === 0) {
+    throw new Error('No hay datos de deudas para exportar');
+  }
+  
   const doc = new jsPDF();
   
-  const totalDeuda = deudasClientes.reduce((sum, c) => sum + (c.deuda || 0), 0);
-  const clientesConDeuda = deudasClientes.filter(c => c.deuda > 0);
+  const clientesConDeuda = deudasClientes.filter(c => (c.deuda || 0) > 0);
+  const totalDeuda = clientesConDeuda.reduce((sum, c) => sum + (c.deuda || 0), 0);
+  
+  if (clientesConDeuda.length === 0) {
+    throw new Error('No hay clientes con deuda para exportar');
+  }
   
   // Título - Celeste
   doc.setFillColor(52, 152, 219);
