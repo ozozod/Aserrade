@@ -8,13 +8,18 @@ Este archivo documenta todos los cambios, parches y mejoras aplicadas a la aplic
 ## [Versión 2.0.2] - 2026-01-27
 
 ### 🐛 Correcciones de Bugs
-- (Agregar descripción de los bugs corregidos)
+- **Exportación de Deudores**: Corregido acceso a `totales.total_pendiente` en resumen general
+- **Archivos Vacíos**: Los exports de deudores ahora muestran correctamente los datos de los clientes
 
 ### ✨ Mejoras
-- (Agregar descripción de las mejoras)
+- **Botones de Exportar**: Mejorado manejo de errores y estados de carga en exportación PDF/Excel
+- **Validaciones**: Agregadas validaciones para evitar exportar archivos vacíos
+- **Feedback al Usuario**: Mensajes de error más claros y descriptivos
 
 ### 🔧 Cambios Técnicos
-- (Agregar detalles técnicos)
+- Corregido acceso a `cuenta.totales.total_pendiente` en lugar de `cuenta.totalPendiente`
+- Agregado estado `exportandoExcel` para mejor UX
+- Mejorado manejo de errores con try-catch y logging
 
 ---
 
