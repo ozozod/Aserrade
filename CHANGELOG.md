@@ -5,6 +5,18 @@ Este archivo documenta todos los cambios, parches y mejoras aplicadas a la aplic
 ---
 
 
+## [Versión 2.0.3] - 2026-01-27
+
+### 🐛 Correcciones de Bugs
+- **AutoUpdater**: Corregido owner en package.json (eliminado espacio en "ozozo d" → "ozozod")
+- **Actualizaciones Automáticas**: Agregada configuración explícita de repositorio GitHub en autoUpdater
+
+### 🔧 Cambios Técnicos
+- Configurado `autoUpdater.setFeedURL()` explícitamente con owner y repo correctos
+- Corregido `package.json` publish.owner de "ozozo d" a "ozozod"
+
+---
+
 ## [Versión 2.0.2] - 2026-01-27
 
 ### 🐛 Correcciones de Bugs
