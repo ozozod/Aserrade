@@ -133,6 +133,35 @@ if (fs.existsSync(changelogPath)) {
   }
 }
 
+// Verificar y hacer push de commits si el remoto está vacío
+info('Verificando estado del repositorio remoto...');
+try {
+  const originalUrl = execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
+  const remoteStatus = execSync('git ls-remote origin main', { encoding: 'utf8', stdio: 'pipe' });
+  if (!remoteStatus.trim()) {
+    warning('El repositorio remoto está vacío. Haciendo push de commits...');
+    // Configurar remoto con token si está disponible
+    if (process.env.GH_TOKEN) {
+      // Extraer user/repo del URL original
+      let repoPath = originalUrl.replace('https://github.com/', '').replace('git@github.com:', '').replace('.git', '');
+      // Limpiar cualquier token que pueda estar en el URL
+      repoPath = repoPath.replace(/^[^@]+@/, '').replace(/^ghp_[^@]+@/, '').replace(/^https:\/\//, '');
+      const newUrl = `https://${process.env.GH_TOKEN}@github.com/${repoPath}.git`;
+      execSync(`git remote set-url origin "${newUrl}"`, { stdio: 'ignore' });
+    }
+    execSync('git push -u origin main', { stdio: 'inherit' });
+    success('Commits subidos al remoto');
+    // Restaurar URL original para GitHub CLI
+    if (process.env.GH_TOKEN) {
+      execSync(`git remote set-url origin "${originalUrl}"`, { stdio: 'ignore' });
+    }
+  } else {
+    info('Repositorio remoto tiene commits');
+  }
+} catch (e) {
+  warning('No se pudo verificar el remoto, continuando...');
+}
+
 // Crear tag si no existe (opcional, gh release create puede crear el tag)
 info('Verificando tag de Git...');
 try {
@@ -148,13 +177,23 @@ try {
 info('Creando release en GitHub...');
 
 try {
+  // Autenticar GitHub CLI si hay token
+  const ghCommand = global.ghPath || 'gh';
+  if (process.env.GH_TOKEN) {
+    info('Autenticando GitHub CLI...');
+    try {
+      execSync(`echo ${process.env.GH_TOKEN} | "${ghCommand}" auth login --with-token`, { stdio: 'pipe' });
+      success('GitHub CLI autenticado');
+    } catch (authErr) {
+      // Si ya está autenticado, continuar
+      info('GitHub CLI ya autenticado o usando token existente');
+    }
+  }
+  
   // Guardar notas en archivo temporal
   const notesFile = path.join(distPath, 'release-notes.md');
   fs.writeFileSync(notesFile, releaseNotes);
 
-  // Crear release
-  const ghCommand = global.ghPath || 'gh';
-  
   // Configurar entorno con GH_TOKEN si está disponible
   const env = { ...process.env };
   if (process.env.GH_TOKEN) {
