@@ -115,7 +115,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ozozo d",
+        "owner": "ozozod",
         "repo": "Aserrade",
         "releaseType": "release"
       }

@@ -13,6 +13,13 @@ class AppUpdater {
   }
 
   setupAutoUpdater() {
+    // Configurar repositorio de GitHub explícitamente
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'ozozod',
+      repo: 'Aserrade'
+    });
+    
     // Configuración de actualizaciones
     autoUpdater.autoDownload = false; // No descargar automáticamente
     autoUpdater.autoInstallOnAppQuit = true; // Instalar al cerrar
