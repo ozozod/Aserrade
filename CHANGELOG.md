@@ -4,6 +4,21 @@ Este archivo documenta todos los cambios, parches y mejoras aplicadas a la aplic
 
 ---
 
+
+## [Versión 2.0.2] - 2026-01-27
+
+### 🐛 Correcciones de Bugs
+- (Agregar descripción de los bugs corregidos)
+
+### ✨ Mejoras
+- (Agregar descripción de las mejoras)
+
+### 🔧 Cambios Técnicos
+- (Agregar detalles técnicos)
+
+---
+
+
 ## [Versión 2.0.1] - 2026-01-21
 
 ### 🐛 Correcciones de Bugs
