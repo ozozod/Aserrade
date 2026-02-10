@@ -5,6 +5,18 @@ Este archivo documenta todos los cambios, parches y mejoras aplicadas a la aplic
 ---
 
 
+## [Versión 2.0.5] - 2026-02-06
+
+### 🐛 Correcciones de Bugs
+- **Botón Aplicar adelanto**: Al hacer clic en "Aplicar" en un adelanto, ya no muestra "Este cliente no tiene remitos pendientes". Ahora se obtienen los remitos del cliente desde la base con `getCuentaCorriente` y se filtran por saldo pendiente > 0, sin depender del caché.
+- **Verificación de actualizaciones**: Si falla la verificación (sin releases o sin red) se muestra "Aplicación actualizada" y se continúa sin mensaje de error.
+
+### 🔧 Cambios Técnicos
+- `handleAplicarAdelanto`: usa `getCuentaCorriente(clienteId)` para cargar remitos pendientes en lugar del estado local.
+- AutoUpdater: en errores se envía `update-not-available` para no mostrar error al usuario.
+
+---
+
 ## [Versión 2.0.4] - 2026-02-06
 
 ### 🐛 Correcciones de Bugs
