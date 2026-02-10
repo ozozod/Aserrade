@@ -68,6 +68,16 @@ try {
       deleteAuditoria: (auditoriaId) => ipcRenderer.invoke('mysql:deleteAuditoria', auditoriaId)
     },
     
+    // Actualizaciones automáticas
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    onUpdateStatus: (callback) => {
+      ipcRenderer.on('update-status', (event, data) => callback(event, data));
+    },
+    removeUpdateStatusListener: (callback) => {
+      ipcRenderer.removeAllListeners('update-status');
+    },
+    
     // Método invoke genérico para compatibilidad
     invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args)
   });

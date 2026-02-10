@@ -17,34 +17,89 @@ const getCuentaCorriente = async (req, res) => {
       [clienteId]
     );
     
-    // Obtener artículos para cada remito
+    const remitoIds = remitos.map(r => r.id);
+    let pagosCliente = [];
+    if (remitoIds.length > 0) {
+      const placeholders = remitoIds.map(() => '?').join(',');
+      const [pagos] = await db.query(
+        `SELECT p.*, r.numero as remito_numero
+         FROM pagos p
+         LEFT JOIN remitos r ON p.remito_id = r.id
+         WHERE (p.remito_id IN (${placeholders}) OR p.cliente_id = ?)
+         ORDER BY p.fecha DESC`,
+        [...remitoIds, clienteId]
+      );
+      pagosCliente = pagos;
+    } else {
+      const [pagos] = await db.query(
+        'SELECT p.*, NULL as remito_numero FROM pagos p WHERE p.cliente_id = ? ORDER BY p.fecha DESC',
+        [clienteId]
+      );
+      pagosCliente = pagos;
+    }
+    
+    // Identificar cheques rebotados y sus ocultos (misma lógica que mysqlService)
+    const pagosRebotadosIds = new Set();
+    const pagosOcultosRebotadosIds = new Set();
+    pagosCliente.forEach(pago => {
+      const rebotado = pago.cheque_rebotado === 1 || pago.cheque_rebotado === true;
+      const obs = pago.observaciones || '';
+      if (rebotado) {
+        pagosRebotadosIds.add(pago.id);
+        if (obs.includes('REMITOS_DETALLE:')) {
+          try {
+            const jsonMatch = obs.match(/REMITOS_DETALLE:(\[.*\])/);
+            if (jsonMatch) {
+              const remitosDetalle = JSON.parse(jsonMatch[1]);
+              const fechaRebotado = new Date(pago.fecha).toISOString().split('T')[0];
+              remitosDetalle.forEach(r => {
+                if (r.remito_id) {
+                  pagosCliente.forEach(p => {
+                    if (p.remito_id === r.remito_id && p.observaciones && p.observaciones.includes('[OCULTO]') && p.cliente_id === parseInt(clienteId)) {
+                      const fechaOculto = new Date(p.fecha).toISOString().split('T')[0];
+                      if (fechaOculto === fechaRebotado) pagosOcultosRebotadosIds.add(p.id);
+                    }
+                  });
+                }
+              });
+            }
+          } catch (e) {}
+        }
+      }
+    });
+    
+    let totalPagado = 0;
+    const montoPorRemito = {};
+    pagosCliente.forEach(pago => {
+      if (pagosRebotadosIds.has(pago.id) || pagosOcultosRebotadosIds.has(pago.id)) return;
+      const monto = parseFloat(pago.monto || 0);
+      const obs = pago.observaciones || '';
+      if (monto === 0 && obs.includes('REMITOS_DETALLE:')) return;
+      totalPagado += monto;
+      if (pago.remito_id) montoPorRemito[pago.remito_id] = (montoPorRemito[pago.remito_id] || 0) + monto;
+    });
+    
+    // Obtener artículos y usar montos desde pagos (no desde remitos.monto_pagado)
+    let totalRemitos = 0;
     for (let remito of remitos) {
       const [articulos] = await db.query(
         'SELECT * FROM remito_articulos WHERE remito_id = ? ORDER BY id',
         [remito.id]
       );
       remito.articulos = articulos;
-    }
-    
-    // Calcular totales
-    let totalRemitos = 0;
-    let totalPagado = 0;
-    let totalPendiente = 0;
-    
-    remitos.forEach(remito => {
-      const precioTotal = remito.precio_total || 0;
+      const precioTotal = parseFloat(remito.precio_total || 0);
       totalRemitos += precioTotal;
-      totalPagado += remito.monto_pagado || 0;
-      totalPendiente += (precioTotal - (remito.monto_pagado || 0));
-    });
+      remito.monto_pagado = montoPorRemito[remito.id] || 0;
+    }
     
     res.json({
       cliente_id: clienteId,
       remitos,
+      pagos: pagosCliente,
       totales: {
         total_remitos: totalRemitos,
         total_pagado: totalPagado,
-        total_pendiente: totalPendiente
+        total_pendiente: totalRemitos - totalPagado
       }
     });
   } catch (error) {

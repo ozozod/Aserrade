@@ -17,11 +17,15 @@ class AppUpdater {
     autoUpdater.setFeedURL({
       provider: 'github',
       owner: 'ozozod',
-      repo: 'Aserrade'
+      repo: 'Aserrade',
+      requestHeaders: {
+        'User-Agent': 'Aserradero-App-Updater',
+        'Accept': 'application/json'
+      }
     });
     
-    // Configuración de actualizaciones
-    autoUpdater.autoDownload = false; // No descargar automáticamente
+    // Configuración de actualizaciones - AUTOMÁTICO AL INICIAR
+    autoUpdater.autoDownload = true; // Descargar automáticamente
     autoUpdater.autoInstallOnAppQuit = true; // Instalar al cerrar
 
     // Evento: Verificando actualizaciones
@@ -33,37 +37,22 @@ class AppUpdater {
     // Evento: Actualización disponible
     autoUpdater.on('update-available', (info) => {
       log.info('✅ Actualización disponible:', info.version);
-      
-      // Mostrar diálogo al usuario
-      dialog.showMessageBox(this.mainWindow, {
-        type: 'info',
-        title: 'Actualización Disponible',
-        message: `Nueva versión ${info.version} disponible`,
-        detail: '¿Deseas descargar e instalar la actualización ahora?\n\n' +
-                'La aplicación se reiniciará después de la instalación.',
-        buttons: ['Descargar e Instalar', 'Más Tarde'],
-        defaultId: 0,
-        cancelId: 1
-      }).then((result) => {
-        if (result.response === 0) {
-          autoUpdater.downloadUpdate();
-        }
-      });
+      this.sendStatusToWindow('update-available', info);
+      // Descargar automáticamente (ya está configurado autoDownload = true)
+      // No mostrar diálogo, solo notificar al renderer
     });
 
     // Evento: No hay actualizaciones
     autoUpdater.on('update-not-available', (info) => {
-      log.info('✅ La aplicación está actualizada:', info.version);
-      this.sendStatusToWindow('update-not-available', info);
+      log.info('✅ La aplicación está actualizada:', info?.version || 'versión actual');
+      this.sendStatusToWindow('update-not-available', info || {});
     });
 
-    // Evento: Error al actualizar
+    // Evento: Error al actualizar (ej. no hay releases, sin red)
     autoUpdater.on('error', (err) => {
-      log.error('❌ Error en el actualizador:', err);
-      this.sendStatusToWindow('error', err);
-      
-      // Mostrar error solo si el usuario está esperando una actualización
-      // No mostrar en checks automáticos de fondo
+      log.warn('⚠️ Actualizador:', err.message, err.code || '');
+      // Enviar como "sin actualización" para no asustar al usuario
+      this.sendStatusToWindow('update-not-available', { version: 'current', skipped: true });
     });
 
     // Evento: Progreso de descarga
@@ -77,29 +66,17 @@ class AppUpdater {
     // Evento: Actualización descargada
     autoUpdater.on('update-downloaded', (info) => {
       log.info('✅ Actualización descargada:', info.version);
+      this.sendStatusToWindow('update-downloaded', info);
       
-      // Notificar al usuario que está lista para instalar
-      dialog.showMessageBox(this.mainWindow, {
-        type: 'info',
-        title: 'Actualización Lista',
-        message: `La versión ${info.version} está lista para instalar`,
-        detail: 'La aplicación se reiniciará para completar la instalación.',
-        buttons: ['Reiniciar Ahora', 'Reiniciar Después'],
-        defaultId: 0,
-        cancelId: 1
-      }).then((result) => {
-        if (result.response === 0) {
-          // Cerrar sesión antes de actualizar (opcional)
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('before-update');
-          }
-          
-          // Esperar un momento y luego instalar
-          setTimeout(() => {
-            autoUpdater.quitAndInstall(false, true);
-          }, 1000);
+      // Instalar automáticamente después de 2 segundos
+      setTimeout(() => {
+        log.info('🔄 Instalando actualización y reiniciando...');
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('before-update');
         }
-      });
+        // Instalar y reiniciar automáticamente
+        autoUpdater.quitAndInstall(false, true);
+      }, 2000);
     });
   }
 
@@ -112,10 +89,39 @@ class AppUpdater {
 
   // Verificar actualizaciones manualmente
   checkForUpdates() {
-    autoUpdater.checkForUpdates()
+    return autoUpdater.checkForUpdates()
       .catch(err => {
         log.error('Error al verificar actualizaciones:', err);
+        this.sendStatusToWindow('error', err);
+        throw err;
       });
+  }
+
+  // Verificar actualizaciones al inicio (bloquea hasta terminar)
+  checkForUpdatesOnStart() {
+    log.info('🔍 Verificando actualizaciones al iniciar...');
+    return new Promise((resolve) => {
+      // Timeout de seguridad: si no hay respuesta en 10 segundos, continuar
+      const timeout = setTimeout(() => {
+        log.warn('⏱️ Timeout verificando actualizaciones, continuando...');
+        this.sendStatusToWindow('update-not-available', { version: 'timeout' });
+        resolve(null);
+      }, 10000);
+      
+      autoUpdater.checkForUpdates()
+        .then((result) => {
+          clearTimeout(timeout);
+          log.info('✅ Verificación de actualizaciones completada');
+          resolve(result);
+        })
+        .catch(err => {
+          clearTimeout(timeout);
+          log.warn('⚠️ No se pudo verificar actualizaciones (sin conexión o sin releases):', err.message || err);
+          // Tratar como "sin actualizaciones" para que la UI no muestre error
+          this.sendStatusToWindow('update-not-available', { version: 'current', skipped: true });
+          resolve(null);
+        });
+    });
   }
 
   // Verificar actualizaciones en segundo plano (sin molestar al usuario)

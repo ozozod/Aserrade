@@ -220,12 +220,13 @@ const deletePago = async (req, res) => {
       remitosAfectados.add(pago.remito_id);
     }
     
-    // Si tiene REMITOS_DETALLE, extraer todos los remitos del pago agrupado
+    // Extraer REMITOS_DETALLE (solo el array JSON) para remitos afectados
+    let remitosDetalle = [];
     if (observaciones.includes('REMITOS_DETALLE:')) {
       try {
-        const match = observaciones.match(/REMITOS_DETALLE:(.+)$/);
+        const match = observaciones.match(/REMITOS_DETALLE:(\[.*?\])\s*(?:PAGO_GRUPO_ID:\S+)?/);
         if (match) {
-          const remitosDetalle = JSON.parse(match[1]);
+          remitosDetalle = JSON.parse(match[1]) || [];
           remitosDetalle.forEach(r => {
             if (r.remito_id) {
               remitosAfectados.add(r.remito_id);
@@ -237,37 +238,94 @@ const deletePago = async (req, res) => {
       }
     }
     
-    // ========== PASO 1: ELIMINAR TODOS LOS PAGOS OCULTOS PRIMERO ==========
-    if (remitosAfectados.size > 0) {
-      const remitosArray = Array.from(remitosAfectados);
-      const placeholders = remitosArray.map(() => '?').join(',');
-      
-      // Eliminar TODOS los pagos ocultos asociados a estos remitos
+    // ========== PASO 1: ELIMINAR SOLO OCULTOS DE ESTE PAGO ==========
+    const pagoGrupoIdMatch = observaciones.match(/PAGO_GRUPO_ID:(\S+)/);
+    const pagoGrupoId = pagoGrupoIdMatch ? pagoGrupoIdMatch[1].trim() : null;
+
+    if (pagoGrupoId) {
       await connection.query(
         `DELETE FROM pagos 
-         WHERE remito_id IN (${placeholders}) 
+         WHERE observaciones LIKE ? 
          AND observaciones LIKE '%[OCULTO]%'
          AND id != ?`,
-        [...remitosArray, id]
+        [`%PAGO_GRUPO_ID:${pagoGrupoId}%`, id]
       );
+    } else if (remitosDetalle.length > 0) {
+      const pagoFecha = pago.fecha ? (typeof pago.fecha === 'string' ? pago.fecha.split('T')[0] : pago.fecha) : null;
+      for (const det of remitosDetalle) {
+        const rid = det.remito_id;
+        const monto = parseFloat(det.monto || 0);
+        if (rid == null) continue;
+        const [candidatos] = await connection.query(
+          `SELECT id FROM pagos 
+           WHERE remito_id = ? AND observaciones LIKE '%[OCULTO]%' AND id != ?
+           AND (fecha = ? OR DATE(fecha) = ?)
+           AND ABS(COALESCE(monto, 0) - ?) < 0.01
+           LIMIT 1`,
+          [rid, id, pagoFecha, pagoFecha, monto]
+        );
+        if (candidatos.length > 0) {
+          await connection.query('DELETE FROM pagos WHERE id = ?', [candidatos[0].id]);
+        }
+      }
     }
     
     // ========== PASO 2: ELIMINAR EL PAGO PRINCIPAL ==========
     await connection.query('DELETE FROM pagos WHERE id = ?', [id]);
     
-    // ========== PASO 3: RECALCULAR ESTADOS DE TODOS LOS REMITOS ==========
-    for (const remitoId of remitosAfectados) {
-      await actualizarEstadoRemito(connection, remitoId);
+    // ========== PASO 3: RECÁLCULO MASIVO FINAL ==========
+    let clienteIdRecalc = pago.cliente_id || null;
+    if (clienteIdRecalc == null && pago.remito_id) {
+      const [remitosRow] = await connection.query('SELECT cliente_id FROM remitos WHERE id = ?', [pago.remito_id]);
+      if (remitosRow && remitosRow.length > 0) clienteIdRecalc = remitosRow[0].cliente_id;
     }
     
-    // Si el pago tenía cliente_id, recalcular TODOS los remitos del cliente
-    if (pago.cliente_id) {
-      const [remitosCliente] = await connection.query(
-        'SELECT id FROM remitos WHERE cliente_id = ?',
-        [pago.cliente_id]
-      );
-      for (const remito of remitosCliente) {
-        await actualizarEstadoRemito(connection, remito.id);
+    if (clienteIdRecalc != null) {
+      // Recálculo masivo SQL (precio_total desde remito_articulos)
+      await connection.query(`
+        UPDATE remitos r
+        LEFT JOIN (
+          SELECT remito_id, COALESCE(SUM(precio_total), 0) as precio_total_calculado
+          FROM remito_articulos
+          GROUP BY remito_id
+        ) ra ON r.id = ra.remito_id
+        SET 
+          r.monto_pagado = COALESCE((
+            SELECT SUM(CASE 
+              WHEN p.monto = 0 AND p.observaciones LIKE '%REMITOS_DETALLE:%' THEN 0
+              WHEN p.cheque_rebotado = 1 THEN 0
+              ELSE COALESCE(p.monto, 0)
+            END)
+            FROM pagos p 
+            WHERE p.remito_id = r.id
+          ), 0),
+          r.estado_pago = CASE
+            WHEN COALESCE(ra.precio_total_calculado, 0) > 0 AND COALESCE((
+              SELECT SUM(CASE 
+                WHEN p.monto = 0 AND p.observaciones LIKE '%REMITOS_DETALLE:%' THEN 0
+                WHEN p.cheque_rebotado = 1 THEN 0
+                ELSE COALESCE(p.monto, 0)
+              END)
+              FROM pagos p 
+              WHERE p.remito_id = r.id
+            ), 0) >= COALESCE(ra.precio_total_calculado, 0) THEN 'Pagado'
+            WHEN COALESCE((
+              SELECT SUM(CASE 
+                WHEN p.monto = 0 AND p.observaciones LIKE '%REMITOS_DETALLE:%' THEN 0
+                WHEN p.cheque_rebotado = 1 THEN 0
+                ELSE COALESCE(p.monto, 0)
+              END)
+              FROM pagos p 
+              WHERE p.remito_id = r.id
+            ), 0) > 0 THEN 'Pago Parcial'
+            ELSE 'Pendiente'
+          END
+        WHERE r.cliente_id = ?
+      `, [clienteIdRecalc]);
+    } else {
+      // Fallback: recalcular solo remitos específicos
+      for (const remitoId of remitosAfectados) {
+        await actualizarEstadoRemito(connection, remitoId);
       }
     }
     

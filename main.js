@@ -226,7 +226,7 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
 
   app.on('activate', () => {
@@ -234,6 +234,49 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+  
+  // Inicializar sistema de actualizaciones cuando la ventana esté lista
+  // Solo verificar actualizaciones en producción
+  if (!isDev) {
+    log.info('🚀 App iniciada - Versión:', app.getVersion());
+    
+    // Esperar a que la ventana esté lista
+    if (mainWindow) {
+      mainWindow.webContents.once('did-finish-load', async () => {
+        // Esperar un momento para que React se inicialice
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Inicializar AppUpdater
+        appUpdater = new AppUpdater(mainWindow);
+        
+        // Verificar actualizaciones INMEDIATAMENTE al iniciar
+        // Esto bloqueará hasta que termine la verificación/actualización
+        try {
+          log.info('🔍 Iniciando verificación de actualizaciones...');
+          await appUpdater.checkForUpdatesOnStart();
+          log.info('✅ Verificación de actualizaciones completada');
+        } catch (error) {
+          log.error('❌ Error verificando actualizaciones al iniciar:', error);
+          // Enviar evento de error al renderer para que continúe
+          if (appUpdater) {
+            appUpdater.sendStatusToWindow('error', { 
+              message: error.message || 'Error al verificar actualizaciones',
+              code: error.code || 'UNKNOWN'
+            });
+          }
+        }
+        
+        // Verificar actualizaciones cada 6 horas (en segundo plano)
+        setInterval(() => {
+          if (appUpdater) {
+            appUpdater.checkForUpdatesQuietly();
+          }
+        }, 6 * 60 * 60 * 1000); // 6 horas
+      });
+    }
+  } else {
+    log.info('🔧 Modo desarrollo - Actualizaciones automáticas deshabilitadas');
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -623,28 +666,8 @@ ipcMain.handle('mysql:deleteAuditoria', async (event, auditoriaId) => {
 // SISTEMA DE ACTUALIZACIONES AUTOMÁTICAS
 // ===========================================
 
-// Inicializar sistema de actualizaciones cuando la ventana esté lista
-app.on('ready', () => {
-  // Solo verificar actualizaciones en producción
-  if (!isDev) {
-    log.info('🚀 App iniciada - Versión:', app.getVersion());
-    
-    // Inicializar AppUpdater
-    appUpdater = new AppUpdater(mainWindow);
-    
-    // Verificar actualizaciones después de 10 segundos (dar tiempo a que cargue la app)
-    setTimeout(() => {
-      appUpdater.checkForUpdatesQuietly();
-    }, 10000);
-    
-    // Verificar actualizaciones cada 6 horas
-    setInterval(() => {
-      appUpdater.checkForUpdatesQuietly();
-    }, 6 * 60 * 60 * 1000); // 6 horas
-  } else {
-    log.info('🔧 Modo desarrollo - Actualizaciones automáticas deshabilitadas');
-  }
-});
+// NOTA: La inicialización de actualizaciones se hace en app.whenReady() 
+// después de que la ventana esté lista para poder comunicarse con el renderer
 
 // IPC handler para verificar actualizaciones manualmente
 ipcMain.handle('check-for-updates', async () => {

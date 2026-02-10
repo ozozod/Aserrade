@@ -44,9 +44,7 @@ config.json
 # Electron
 /out
 /dist
-/release
-
-# Database
+/release# Database
 *.db
 *.sqlite# Backups
 *.backup

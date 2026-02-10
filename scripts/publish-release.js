@@ -101,7 +101,32 @@ if (!fs.existsSync(distPath)) {
   error('No se encontró la carpeta dist/. Ejecuta primero: npm run build:win');
 }
 
-const setupFile = path.join(distPath, `Aserradero App-${version}-Setup.exe`);
+// Buscar el archivo con cualquier variación del nombre (espacio, punto, guión)
+const possibleNames = [
+  `Aserradero App-${version}-Setup.exe`,
+  `Aserradero.App-${version}-Setup.exe`,
+  `Aserradero-App-${version}-Setup.exe`
+];
+
+let setupFile = null;
+for (const name of possibleNames) {
+  const filePath = path.join(distPath, name);
+  if (fs.existsSync(filePath)) {
+    setupFile = filePath;
+    break;
+  }
+}
+
+if (!setupFile) {
+  // Buscar cualquier .exe en dist
+  const exeFiles = fs.readdirSync(distPath).filter(f => f.endsWith('.exe') && f.includes(version));
+  if (exeFiles.length > 0) {
+    setupFile = path.join(distPath, exeFiles[0]);
+    info(`Usando archivo encontrado: ${exeFiles[0]}`);
+  } else {
+    error(`No se encontró ningún instalador para la versión ${version}`);
+  }
+}
 const latestYml = path.join(distPath, 'latest.yml');
 
 if (!fs.existsSync(setupFile)) {
@@ -212,6 +237,28 @@ try {
   
   // Limpiar archivo temporal
   fs.unlinkSync(notesFile);
+  
+  // Actualizar latest.yml para que coincida con el nombre real del archivo en GitHub
+  // GitHub reemplaza espacios con puntos, así que necesitamos actualizar el YML
+  info('Actualizando latest.yml con el nombre correcto del archivo...');
+  try {
+    const ymlPath = path.join(distPath, 'latest.yml');
+    if (fs.existsSync(ymlPath)) {
+      let ymlContent = fs.readFileSync(ymlPath, 'utf8');
+      // Reemplazar cualquier variación del nombre con el nombre real en GitHub
+      const realFileName = path.basename(setupFile).replace(/ /g, '.');
+      ymlContent = ymlContent.replace(/Aserradero[.\- ]App/g, 'Aserradero.App');
+      fs.writeFileSync(ymlPath, ymlContent);
+      
+      // Re-subir el latest.yml actualizado
+      const updateCmd = `"${ghCommand}" release upload v${version} "${ymlPath}" --clobber`;
+      execSync(updateCmd, { stdio: 'inherit', shell: true, env: env });
+      success('latest.yml actualizado en GitHub');
+    }
+  } catch (ymlError) {
+    warning('No se pudo actualizar latest.yml, pero el release se publicó correctamente');
+    log.warn('Error actualizando latest.yml:', ymlError);
+  }
   
   success(`Release v${version} publicado exitosamente!`);
   info('Los usuarios recibirán la actualización automáticamente');

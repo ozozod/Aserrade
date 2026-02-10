@@ -118,11 +118,28 @@ npm run build:win
 ```
 
 **Archivos generados:**
-- `dist/Aserradero-Setup-2.0.2.exe` (instalador)
-- `dist/Aserradero-2.0.2.exe` (portable)
+- `dist/Aserradero.App-2.0.4-Setup.exe` (instalador)
 - `dist/latest.yml` (metadata para electron-updater)
 
-### Paso 5: Crear GitHub Release
+### Paso 4b: Publicar a GitHub (subir el instalador para actualización automática)
+
+1. **Crear token en GitHub:** Settings → Developer settings → Personal access tokens → Generate new token (classic), permiso **repo**. Copiar el token.
+2. **Si PowerShell da error con npx** ("la ejecución de scripts está deshabilitada"), usar **CMD** o ejecutar con node:
+   - **Opción A – CMD:** Abrir CMD (no PowerShell), luego:
+     ```cmd
+     cd "C:\Users\ozozo\Documents\aaaav2 audi"
+     set GH_TOKEN=tu_token_aqui
+     node node_modules\electron-builder\cli.js --win -p always
+     ```
+   - **Opción B – PowerShell (habilitar scripts una vez):** Ejecutar como administrador: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. Luego:
+     ```powershell
+     cd "C:\Users\ozozo\Documents\aaaav2 audi"
+     $env:GH_TOKEN = "tu_token_aqui"
+     npm run publish:github
+     ```
+3. Reemplazar `tu_token_aqui` por el token real. Tras publicar, la app instalada detectará la nueva versión al iniciar.
+
+### Paso 5: Crear GitHub Release (si no usaste Paso 4b)
 
 #### Opción A: Desde GitHub Web
 1. Ir a: `https://github.com/TU_USUARIO/aserradero-v2/releases/new`

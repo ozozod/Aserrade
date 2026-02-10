@@ -5,6 +5,18 @@ Este archivo documenta todos los cambios, parches y mejoras aplicadas a la aplic
 ---
 
 
+## [Versión 2.0.4] - 2026-02-06
+
+### 🐛 Correcciones de Bugs
+- **Pagos distribuidos (varios remitos)**: Corregido que en la tabla de Pagos se mostrara $ 0,00 en la columna Monto. El parseo de `REMITOS_DETALLE` en observaciones fallaba porque el regex incluía el texto `PAGO_GRUPO_ID:...` y rompía el JSON. Ahora se extrae solo el array JSON y se muestra el monto total correcto.
+- **Cuenta corriente tras borrar pagos**: Los totales y saldos por remito se calculan siempre desde la tabla `pagos` (no desde `remitos.monto_pagado`), para que al eliminar pagos la vista coincida con los datos reales y no siga mostrando "tiene pagos" o saldos incorrectos.
+
+### 🔧 Cambios Técnicos
+- `parsearRemitosDesdeObservaciones`: nuevo regex para capturar solo el array JSON de REMITOS_DETALLE (excluyendo PAGO_GRUPO_ID).
+- `getCuentaCorriente` (mysqlService y reportesController): total_pagado y monto_pagado por remito calculados desde la suma de pagos reales.
+
+---
+
 ## [Versión 2.0.3] - 2026-01-27
 
 ### 🐛 Correcciones de Bugs

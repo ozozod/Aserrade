@@ -4,7 +4,7 @@
 
 **Fecha de inicio**: Noviembre 2024 (desarrollo inicial)  
 **Estado actual**: ✅ Versión inicial completada  
-**Última actualización**: Noviembre 2025
+**Última actualización**: Febrero 2026 — v2.0.4 (instalador y actualizaciones automáticas)
 
 ---
 

@@ -19,6 +19,7 @@ import ErrorViewer from './components/ErrorViewer';
 import AdminPanel from './components/AdminPanel';
 import CambiarPassword from './components/CambiarPassword';
 import ModalReportarError from './components/ModalReportarError';
+import UpdateChecker from './components/UpdateChecker';
 import { useDataCache } from './context/DataCacheContext';
 
 // Contexto para usuario logueado
@@ -31,6 +32,9 @@ function AppContent() {
   // Estado de autenticación
   const [usuarioLogueado, setUsuarioLogueado] = useState(null);
   const [cargandoSesion, setCargandoSesion] = useState(true);
+  
+  // Estado de verificación de actualizaciones
+  const [verificandoActualizaciones, setVerificandoActualizaciones] = useState(true);
   
   // Historial
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
@@ -228,6 +232,17 @@ function AppContent() {
     setMostrarHistorial(true);
   };
 
+  // Mostrar pantalla de verificación de actualizaciones primero
+  if (verificandoActualizaciones) {
+    return (
+      <UpdateChecker 
+        onUpdateComplete={() => {
+          setVerificandoActualizaciones(false);
+        }} 
+      />
+    );
+  }
+  
   // Pantalla de carga inicial
   if (cargandoSesion) {
     return (

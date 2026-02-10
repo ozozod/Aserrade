@@ -41,6 +41,10 @@ function Pagos() {
   const [marcandoRebotadoId, setMarcandoRebotadoId] = useState(null); // Estado para rastrear qué pago se está marcando como rebotado
   const [remitosExpandidos, setRemitosExpandidos] = useState(new Set());
   const [pagosExpandidos, setPagosExpandidos] = useState(new Set()); // Estado para pagos expandidos
+  const [showAplicarAdelantoModal, setShowAplicarAdelantoModal] = useState(false);
+  const [adelantoAplicar, setAdelantoAplicar] = useState(null);
+  const [distribucionAdelanto, setDistribucionAdelanto] = useState({});
+  const [remitosParaAdelanto, setRemitosParaAdelanto] = useState([]);
   // Función helper para obtener fecha local en formato YYYY-MM-DD (sin conversión UTC)
   const obtenerFechaLocal = (fecha = null) => {
     const d = fecha ? new Date(fecha) : new Date();
@@ -195,7 +199,8 @@ function Pagos() {
   // Función para parsear remitos desde observaciones
   const parsearRemitosDesdeObservaciones = (observaciones) => {
     if (!observaciones) return null;
-    const match = observaciones.match(/REMITOS_DETALLE:(.+)$/);
+    // Extraer solo el array JSON; después puede venir " PAGO_GRUPO_ID:..." que rompería JSON.parse
+    const match = observaciones.match(/REMITOS_DETALLE:\s*(\[[\s\S]*\])\s*(?:PAGO_GRUPO_ID|$)/);
     if (match) {
       try {
         return JSON.parse(match[1]);
@@ -791,19 +796,21 @@ function Pagos() {
         ? `${formData.observaciones}`
         : esPagoCompleto ? `Pago completo` : `Pago parcial`;
       
+      // ID único para vincular este pago principal con sus ocultos
+      const pagoGrupoId = `G${Date.now()}${Math.random().toString(36).slice(2, 9)}`;
       // Guardar JSON al final de las observaciones (invisible para el usuario, después de |)
-      const observacionesConDetalle = `${observacionesTexto} | REMITOS_DETALLE:${JSON.stringify(remitosDetalle)}`;
+      const observacionesConDetalle = `${observacionesTexto} | REMITOS_DETALLE:${JSON.stringify(remitosDetalle)} PAGO_GRUPO_ID:${pagoGrupoId}`;
       
       // OPTIMIZACIÓN: Crear todos los pagos en un solo batch insert para mejor rendimiento
       const remitoPrincipal = remitosConPago[0].remito;
       
-      // Preparar pagos ocultos
+      // Preparar pagos ocultos (mismo PAGO_GRUPO_ID para eliminar solo estos al borrar este pago)
       const pagosOcultos = remitosConPago.map(({ remito, monto }) => ({
             remito_id: remito.id,
         cliente_id: parseInt(clienteSeleccionado), // AGREGAR cliente_id
         fecha: fechaConHora14(formData.fecha),
         monto: parseFloat(monto) || 0,
-            observaciones: `[OCULTO] Pago agrupado - Remito ${remito.numero || remito.id} - ${formatearMonedaConSimbolo(monto)}`,
+            observaciones: `[OCULTO] Pago agrupado - Remito ${remito.numero || remito.id} - ${formatearMonedaConSimbolo(monto)} PAGO_GRUPO_ID:${pagoGrupoId}`,
             es_cheque: esCheque
       }));
       
@@ -1108,46 +1115,180 @@ function Pagos() {
         }
       }
       
-      // Recalcular estados del cliente después de eliminar todos los pagos
-      if (clienteIdPago) {
-        try {
-          await supabaseService.recalcularEstadosRemitosCliente(clienteIdPago);
-        } catch (error) {
-          console.warn('Error recalculando estados del cliente (no crítico):', error);
-        }
-      }
-      
-      // Invalidar caché COMPLETAMENTE antes de recargar (forzar limpieza total)
-      await invalidateCache('pagos');
-      await invalidateCache('remitos');
-      await invalidateCache('resumen');
-      await invalidateCache('clientes');
-      await refreshRelated('pagos');
-      await refreshRelated('remitos');
-      
-      // Esperar un momento para asegurar que el caché se limpió
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Recargar datos del caché (forzar recarga desde BD)
-      await Promise.all([
-        loadPagosCache(true),
-        loadRemitosCache(true),
-        loadClientesCache(true)
-      ]);
-      
-      // Forzar actualización del estado directamente desde BD (sin caché)
-      const nuevosPagos = await supabaseService.getPagos();
-      setPagos(nuevosPagos || []);
-      
-      // INVALIDAR caché de pendientes para forzar recálculo
-      setPendientesClientes({});
-      
       alertNoBloqueante('Pago eliminado correctamente', 'success');
+      
+      // FORZAR RECARGA COMPLETA después de 500ms para evitar problemas de concurrencia
+      setTimeout(async () => {
+        try {
+          console.log('🔄 Recargando datos después de eliminar pago...');
+          
+          // Invalidar TODO el caché
+          await invalidateCache('pagos');
+          await invalidateCache('remitos');
+          await invalidateCache('resumen');
+          await invalidateCache('clientes');
+          
+          // Recargar desde BD
+          const [nuevosPagos, nuevosRemitos] = await Promise.all([
+            supabaseService.getPagos(),
+            supabaseService.getRemitos()
+          ]);
+          
+          // Actualizar estados
+          setPagos(nuevosPagos || []);
+          setRemitos(nuevosRemitos || []);
+          setPendientesClientes({});
+          
+          console.log('✅ Datos recargados completamente');
+        } catch (error) {
+          console.error('Error en recarga post-eliminación:', error);
+        }
+      }, 500);
     } catch (error) {
       console.error('Error eliminando pago:', error);
       alertNoBloqueante('Error al eliminar pago: ' + error.message, 'error');
     } finally {
       setEliminandoId(null);
+    }
+  };
+
+  const handleAplicarAdelanto = async (adelanto) => {
+    if (!adelanto || adelanto.remito_id !== null) {
+      alertNoBloqueante('Este pago no es un adelanto', 'warning');
+      return;
+    }
+
+    try {
+      const clienteId = adelanto.cliente_id ? parseInt(adelanto.cliente_id, 10) : null;
+      if (!clienteId) {
+        alertNoBloqueante('Este adelanto no tiene cliente asociado', 'warning');
+        return;
+      }
+
+      // Obtener remitos del cliente desde la base (no depender del caché)
+      const cuentaCorriente = await supabaseService.getCuentaCorriente(clienteId);
+      if (!cuentaCorriente || !cuentaCorriente.remitos || cuentaCorriente.remitos.length === 0) {
+        alertNoBloqueante('Este cliente no tiene remitos para aplicar el adelanto', 'info');
+        return;
+      }
+
+      // Filtrar solo remitos con saldo pendiente > 0
+      const remitosCliente = cuentaCorriente.remitos
+        .map(r => ({
+          ...r,
+          precio_total: parseFloat(r.precio_total || 0),
+          monto_pagado: parseFloat(r.monto_pagado || 0)
+        }))
+        .filter(r => {
+          const total = r.precio_total || 0;
+          const pagado = r.monto_pagado || 0;
+          const pendiente = total - pagado;
+          return total > 0 && pendiente > 0;
+        });
+
+      if (remitosCliente.length === 0) {
+        alertNoBloqueante('Este cliente no tiene remitos pendientes para aplicar el adelanto', 'info');
+        return;
+      }
+
+      setAdelantoAplicar(adelanto);
+      setRemitosParaAdelanto(remitosCliente);
+      setDistribucionAdelanto({});
+      setShowAplicarAdelantoModal(true);
+    } catch (error) {
+      console.error('Error preparando aplicación de adelanto:', error);
+      alertNoBloqueante('Error: ' + (error.message || 'No se pudieron cargar los remitos'), 'error');
+    }
+  };
+
+  const handleConfirmarAplicarAdelanto = async () => {
+    if (!adelantoAplicar) return;
+
+    try {
+      const remitosConPago = Object.entries(distribucionAdelanto)
+        .filter(([remitoId, monto]) => aEntero(monto || 0) > 0)
+        .map(([remitoId, monto]) => ({
+          remito: remitosParaAdelanto.find(r => r.id === parseInt(remitoId)),
+          monto: aEntero(monto)
+        }));
+
+      if (remitosConPago.length === 0) {
+        alertNoBloqueante('Debes asignar al menos un monto a un remito', 'warning');
+        return;
+      }
+
+      const totalDistribuido = remitosConPago.reduce((sum, { monto }) => sum + monto, 0);
+      const montoAdelanto = parseFloat(adelantoAplicar.monto || 0);
+
+      if (totalDistribuido > montoAdelanto) {
+        alertNoBloqueante('No puedes distribuir más dinero del que tiene el adelanto', 'warning');
+        return;
+      }
+
+      // Eliminar el adelanto original
+      await supabaseService.deletePago(adelantoAplicar.id);
+
+      // Crear nuevo pago distribuido con PAGO_GRUPO_ID
+      const remitosDetalle = remitosConPago.map(({ remito, monto }) => ({
+        remito_id: remito.id,
+        remito_numero: remito.numero || `REM-${remito.id}`,
+        monto: monto
+      }));
+
+      const pagoGrupoId = `G${Date.now()}${Math.random().toString(36).slice(2, 9)}`;
+      const observacionesConDetalle = `Adelanto aplicado | REMITOS_DETALLE:${JSON.stringify(remitosDetalle)} PAGO_GRUPO_ID:${pagoGrupoId}`;
+      
+      const pagosOcultos = remitosConPago.map(({ remito, monto }) => ({
+        remito_id: remito.id,
+        cliente_id: adelantoAplicar.cliente_id,
+        fecha: adelantoAplicar.fecha,
+        monto: monto,
+        observaciones: `[OCULTO] Pago agrupado - Remito ${remito.numero || remito.id} - ${formatearMonedaConSimbolo(monto)} PAGO_GRUPO_ID:${pagoGrupoId}`,
+        es_cheque: adelantoAplicar.es_cheque || false
+      }));
+
+      const pagosParaInsertar = [
+        ...pagosOcultos,
+        {
+          remito_id: remitosConPago[0].remito.id,
+          cliente_id: adelantoAplicar.cliente_id,
+          fecha: adelantoAplicar.fecha,
+          monto: 0,
+          observaciones: observacionesConDetalle,
+          es_cheque: adelantoAplicar.es_cheque || false
+        }
+      ];
+
+      // Si queda dinero del adelanto, crear adelanto residual
+      const montoResidual = montoAdelanto - totalDistribuido;
+      if (montoResidual > 0) {
+        pagosParaInsertar.push({
+          remito_id: null,
+          cliente_id: adelantoAplicar.cliente_id,
+          fecha: adelantoAplicar.fecha,
+          monto: montoResidual,
+          observaciones: `[ADELANTO] Residual - ${formatearMonedaConSimbolo(montoResidual)}`,
+          es_cheque: false
+        });
+      }
+
+      await supabaseService.createPagosBatch(pagosParaInsertar);
+
+      // Invalidar caché y recargar con delay
+      setTimeout(async () => {
+        await invalidateCache('pagos');
+        await invalidateCache('remitos');
+        const pagosActualizados = await supabaseService.getPagos();
+        setPagos(pagosActualizados || []);
+        setPendientesClientes({});
+      }, 500);
+
+      setShowAplicarAdelantoModal(false);
+      setAdelantoAplicar(null);
+      alertNoBloqueante(`✅ Adelanto aplicado correctamente`, 'success');
+    } catch (error) {
+      console.error('Error aplicando adelanto:', error);
+      alertNoBloqueante('Error al aplicar adelanto: ' + error.message, 'error');
     }
   };
 
@@ -2938,6 +3079,21 @@ function Pagos() {
                               </button>
                             )}
                             
+                            {/* Botón Aplicar Adelanto - solo para adelantos (remito_id null) */}
+                            {pago.remito_id === null && (
+                              <button
+                                className="btn btn-sm btn-warning"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAplicarAdelanto(pago);
+                                }}
+                                style={{ marginRight: '5px', padding: '4px 8px', fontSize: '12px' }}
+                                title="Aplicar este adelanto a remitos pendientes"
+                              >
+                                💰 Aplicar
+                              </button>
+                            )}
+                            
                             <button
                               className="btn btn-sm btn-danger"
                               onClick={(e) => {
@@ -3808,6 +3964,163 @@ function Pagos() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para aplicar adelanto */}
+      {showAplicarAdelantoModal && adelantoAplicar && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAplicarAdelantoModal(false);
+            }
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: theme === 'dark' ? '#2d2d2d' : 'white',
+              padding: '25px',
+              borderRadius: '12px',
+              width: '90%',
+              maxWidth: '600px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              border: `2px solid ${theme === 'dark' ? '#5dade2' : '#007bff'}`
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginBottom: '20px', color: theme === 'dark' ? '#e0e0e0' : 'inherit' }}>
+              💰 Aplicar Adelanto a Remitos
+            </h3>
+            
+            <div style={{ 
+              padding: '15px', 
+              backgroundColor: theme === 'dark' ? '#1e4a1e' : '#d4edda',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '1px solid #28a745'
+            }}>
+              <strong>Adelanto disponible: {formatearMonedaConSimbolo(adelantoAplicar.monto)}</strong>
+              <div style={{ fontSize: '12px', marginTop: '5px', opacity: 0.8 }}>
+                Fecha: {new Date(adelantoAplicar.fecha).toLocaleDateString('es-AR')}
+              </div>
+            </div>
+
+            <h4 style={{ color: theme === 'dark' ? '#e0e0e0' : 'inherit', marginBottom: '15px' }}>
+              Remitos Pendientes del Cliente:
+            </h4>
+
+            {remitosParaAdelanto.map(remito => {
+              const saldoPendiente = parseFloat(remito.precio_total || 0) - parseFloat(remito.monto_pagado || 0);
+              return (
+                <div key={remito.id} style={{ 
+                  padding: '12px',
+                  marginBottom: '10px',
+                  backgroundColor: theme === 'dark' ? '#3a3a3a' : '#f8f9fa',
+                  borderRadius: '6px',
+                  border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontWeight: 'bold', color: theme === 'dark' ? '#5dade2' : '#007bff' }}>
+                      {remito.numero || `REM-${remito.id}`}
+                    </span>
+                    <span>Pendiente: {formatearMonedaConSimbolo(saldoPendiente)}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <label style={{ minWidth: '100px', fontSize: '13px' }}>Pagar:</label>
+                    <input
+                      type="text"
+                      value={formatearNumeroVisual(distribucionAdelanto[remito.id] || '')}
+                      onChange={(e) => {
+                        const valor = e.target.value;
+                        const numero = limpiarFormatoNumero(valor);
+                        setDistribucionAdelanto({
+                          ...distribucionAdelanto,
+                          [remito.id]: numero
+                        });
+                      }}
+                      placeholder="0"
+                      style={{ 
+                        flex: 1,
+                        padding: '6px',
+                        backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                        color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                        border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                        textAlign: 'right'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const montoDisponible = parseFloat(adelantoAplicar.monto || 0);
+                        const yaDistribuido = Object.entries(distribucionAdelanto)
+                          .filter(([rid]) => rid !== remito.id.toString())
+                          .reduce((sum, [, monto]) => sum + aEntero(monto || 0), 0);
+                        const maxPagar = Math.min(saldoPendiente, montoDisponible - yaDistribuido);
+                        if (maxPagar > 0) {
+                          setDistribucionAdelanto({
+                            ...distribucionAdelanto,
+                            [remito.id]: maxPagar
+                          });
+                        }
+                      }}
+                      className="btn btn-sm btn-outline-primary"
+                      style={{ padding: '4px 8px', fontSize: '11px' }}
+                    >
+                      Max
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginTop: '20px',
+              padding: '15px',
+              backgroundColor: theme === 'dark' ? '#404040' : '#e9ecef',
+              borderRadius: '8px'
+            }}>
+              <span>
+                <strong>Total a distribuir: </strong>
+                {formatearMonedaConSimbolo(Object.values(distribucionAdelanto).reduce((sum, monto) => sum + aEntero(monto || 0), 0))}
+              </span>
+              <span>
+                <strong>Disponible: </strong>
+                {formatearMonedaConSimbolo(parseFloat(adelantoAplicar.monto || 0))}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowAplicarAdelantoModal(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-success"
+                onClick={handleConfirmarAplicarAdelanto}
+                disabled={Object.values(distribucionAdelanto).every(monto => aEntero(monto || 0) === 0)}
+              >
+                💰 Aplicar Adelanto
+              </button>
+            </div>
           </div>
         </div>
       )}

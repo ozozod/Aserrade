@@ -1,6 +1,6 @@
 {
   "name": "aserradero-app",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Aplicación de gestión de remitos y cuentas corrientes para aserradero",
   "homepage": "./",
   "main": "main.js",
@@ -16,8 +16,8 @@
     "electron": "electron .",
     "postinstall": "electron-rebuild",
     "rebuild": "electron-rebuild",
-    "prebuild": "node -e \"require('fs').copyFileSync('icono.ico', 'build/icon.ico')\" || true",
-    "build": "react-scripts build && node -e \"require('fs').copyFileSync('icono.ico', 'build/icon.ico')\"",
+    "prebuild": "node -e \"try { const fs = require('fs'); const path = require('path'); if (fs.existsSync('icono.ico')) { const buildDir = 'build'; if (!fs.existsSync(buildDir)) { fs.mkdirSync(buildDir, { recursive: true }); } fs.copyFileSync('icono.ico', path.join(buildDir, 'icon.ico')); } } catch(e) {}\"",
+    "build": "react-scripts build && node -e \"try { const fs = require('fs'); const path = require('path'); if (fs.existsSync('icono.ico')) { fs.copyFileSync('icono.ico', path.join('build', 'icon.ico')); } } catch(e) {}\"",
     "build:electron": "electron-builder",
     "build:win": "npm run build && electron-builder --win",
     "publish:github": "npm run build && electron-builder --win -p always",
@@ -110,7 +110,7 @@
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "menuCategory": false,
-      "artifactName": "${productName}-${version}-Setup.${ext}"
+      "artifactName": "Aserradero.App-${version}-Setup.${ext}"
     },
     "publish": [
       {
