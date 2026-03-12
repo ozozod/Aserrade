@@ -4,7 +4,7 @@ import { getUnresolvedErrors, markErrorAsResolved } from '../services/errorRepor
 import * as databaseService from '../services/databaseService';
 import { alertNoBloqueante, confirmNoBloqueante } from '../utils/notificaciones';
 
-function AdminPanel({ usuario, onClose }) {
+function AdminPanel({ usuario, onClose, onLogout }) {
   const { theme } = useTheme();
   const [activeSection, setActiveSection] = useState('errores');
   const [errores, setErrores] = useState([]);
@@ -267,20 +267,42 @@ function AdminPanel({ usuario, onClose }) {
               Bienvenido, {usuario.nombre_completo}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '500'
-            }}
-          >
-            ✕ Cerrar
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {usuario?.rol === 'admin' && typeof onLogout === 'function' && (
+              <button
+                onClick={() => {
+                  onClose?.();
+                  onLogout();
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  color: 'white',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+                title="Cerrar sesión"
+              >
+                🚪 Cerrar sesión
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              ✕ Cerrar
+            </button>
+          </div>
         </div>
 
         {/* Navigation */}

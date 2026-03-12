@@ -495,6 +495,7 @@ function AppContent() {
             <AdminPanel 
               usuario={usuarioLogueado} 
               onClose={() => setMostrarAdminPanel(false)} 
+              onLogout={handleLogout}
             />
           )}
           
