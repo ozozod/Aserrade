@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal } from './formatoMoneda';
+import { formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal, sumarPagosSaldoAFavorAplicado } from './formatoMoneda';
 
 // Función para limpiar observaciones de pagos (sin información de remitos)
 const limpiarConceptoPago = (observaciones, pago = null) => {
@@ -17,6 +17,13 @@ const limpiarConceptoPago = (observaciones, pago = null) => {
   // Quitar [OCULTO] y texto después
   if (concepto.includes('[OCULTO]')) {
     concepto = 'PAGO A CUENTA';
+  }
+  
+  // En exportados mostrar solo el detalle del usuario, no "Saldo a favor aplicado - ..."
+  if (concepto.toLowerCase().includes('saldo a favor aplicado')) {
+    const idx = concepto.toLowerCase().indexOf('saldo a favor aplicado');
+    const despues = concepto.slice(idx + 'saldo a favor aplicado'.length).replace(/^\s*[-–]\s*/, '').trim();
+    concepto = despues || 'Pago a cuenta';
   }
   
   // Si dice "Pago completo" o "Pago agrupado", simplificar
@@ -164,7 +171,8 @@ const construirMovimientosExcel = (remitos, pagos) => {
             id: pago.id,
             es_cheque: pago.es_cheque === 1 || pago.es_cheque === true || pago.es_cheque === '1',
             cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1',
-            remitosDetalle: remitosDetalle
+            remitosDetalle: remitosDetalle,
+            observaciones: obs
           };
           return;
         }
@@ -183,7 +191,8 @@ const construirMovimientosExcel = (remitos, pagos) => {
       montoTotal: parseFloat(pago.monto || 0),
       id: pago.id,
       es_cheque: pago.es_cheque === 1 || pago.es_cheque === true || pago.es_cheque === '1',
-      cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1'
+      cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1',
+      observaciones: obs
     };
   });
   
@@ -210,7 +219,8 @@ const construirMovimientosExcel = (remitos, pagos) => {
         id: pagoAgrupado.id,
         orden: 0,
         es_cheque: pagoAgrupado.es_cheque,
-        cheque_rebotado: pagoAgrupado.cheque_rebotado
+        cheque_rebotado: pagoAgrupado.cheque_rebotado,
+        observaciones: pagoAgrupado.observaciones || ''
       });
     }
   });
@@ -231,25 +241,29 @@ const construirMovimientosExcel = (remitos, pagos) => {
   return movimientos;
 };
 
-// Calcula saldos con historial completo y devuelve mapa clave->saldo
-const calcularSaldosDesdeHistorialExcel = (movimientosHistorial, saldoResumen) => {
+// Calcula saldos con historial completo y devuelve mapa clave->saldo (DEBE = deuda pendiente después de cada movimiento)
+const calcularSaldosDesdeHistorialExcel = (movimientosHistorial, saldoResumen, montoSaldoInicial = 0) => {
   let saldoAcumulado = 0;
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {
     const chequeRebotado = mov.cheque_rebotado === 1 || mov.cheque_rebotado === true || mov.cheque_rebotado === '1';
+
     if (!chequeRebotado) {
       saldoAcumulado += mov.total - mov.pago;
+      saldoPorClave.set(mov.clave, saldoAcumulado);
+    } else {
+      saldoPorClave.set(mov.clave, saldoAcumulado);
     }
-    saldoPorClave.set(mov.clave, saldoAcumulado);
   });
   
-  const diferenciaSaldo = Math.abs(saldoAcumulado - (saldoResumen || 0));
-  if (diferenciaSaldo > 1 && movimientosHistorial.length > 0) {
+  // Ajustar última fila para que DEBE cierre con el resumen (Saldo Pendiente)
+  if (movimientosHistorial.length > 0) {
     const ultimo = movimientosHistorial[movimientosHistorial.length - 1];
     const ultimoEsChequeRebotado = ultimo.cheque_rebotado === 1 || ultimo.cheque_rebotado === true || ultimo.cheque_rebotado === '1';
     if (!ultimoEsChequeRebotado) {
-      saldoPorClave.set(ultimo.clave, saldoResumen || saldoAcumulado);
+      const valorCierre = saldoResumen ?? saldoAcumulado;
+      saldoPorClave.set(ultimo.clave, valorCierre);
     }
   }
   
@@ -333,6 +347,41 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
   // Los artículos del cliente ya no se incluyen en el Excel
   
   currentRow += 2; // Espacio antes de la tabla principal
+
+  // ========== SALDO INICIAL (si existe) ==========
+  const saldoInicial = cuentaCorriente.saldoInicial;
+  if (saldoInicial && saldoInicial.monto && parseFloat(saldoInicial.monto || 0) !== 0) {
+    const montoSaldo = parseFloat(saldoInicial.monto || 0);
+    const esAFavor = montoSaldo > 0;
+    const filaSaldo = worksheet.getRow(currentRow);
+    const fechaRef = saldoInicial.fecha_referencia
+      ? new Date(saldoInicial.fecha_referencia).toLocaleDateString('es-AR')
+      : '';
+    const textoBase = saldoInicial.descripcion || 'Saldo inicial';
+    filaSaldo.getCell(1).value = 'SALDO INICIAL';
+    filaSaldo.getCell(3).value = `${textoBase}${fechaRef ? ' al ' + fechaRef : ''}`;
+    if (esAFavor) {
+      filaSaldo.getCell(7).value = formatearMonedaConSimbolo(Math.abs(montoSaldo));
+    } else {
+      filaSaldo.getCell(8).value = formatearMonedaConSimbolo(Math.abs(montoSaldo));
+    }
+    
+    // Estilos: azul si es a favor, rojo si es en contra
+    const fillColor = esAFavor ? 'FFCCE5FF' : 'FFFFCDD2';
+    const fontColor = esAFavor ? 'FF004C99' : 'FFB71C1C';
+    for (let col = 1; col <= 8; col++) {
+      const cell = filaSaldo.getCell(col);
+      cell.border = borderStyle;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+      cell.font = { bold: true, color: { argb: fontColor } };
+      if (col >= 4 && col <= 8) {
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+      } else {
+        cell.alignment = { vertical: 'middle' };
+      }
+    }
+    currentRow += 2; // Espacio después del saldo inicial
+  }
   
   // ========== ENCABEZADO DE TABLA ==========
   const headerRow = currentRow;
@@ -434,7 +483,8 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
             id: pago.id,
             es_cheque: pago.es_cheque === 1 || pago.es_cheque === true || pago.es_cheque === '1',
             cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1',
-            remitosDetalle: remitosDetalle // Guardar detalles para referencia
+            remitosDetalle: remitosDetalle,
+            observaciones: obs
           };
           return;
         }
@@ -453,7 +503,8 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
       montoTotal: parseFloat(pago.monto || 0),
       id: pago.id,
       es_cheque: pago.es_cheque === 1 || pago.es_cheque === true || pago.es_cheque === '1',
-      cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1'
+      cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1',
+      observaciones: obs
     };
   });
   
@@ -486,7 +537,8 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
         id: pagoAgrupado.id,
         orden: 0,
         es_cheque: pagoAgrupado.es_cheque,
-        cheque_rebotado: pagoAgrupado.cheque_rebotado
+        cheque_rebotado: pagoAgrupado.cheque_rebotado,
+        observaciones: pagoAgrupado.observaciones || ''
       });
     }
   });
@@ -527,9 +579,13 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
     cuentaCorriente.pagos || []
   );
   
+  const montoSaldoInicialExcel = (cuentaCorriente.saldoInicial && parseFloat(cuentaCorriente.saldoInicial.monto || 0)) || 0;
+  // Usar total_pendiente del backend (crédito restante) para que la tabla cierre con el resumen
+  const saldoResumenTabla = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0) - montoSaldoInicialExcel);
   const saldoPorClave = calcularSaldosDesdeHistorialExcel(
     movimientosHistorial,
-    cuentaCorriente.totales?.total_pendiente || 0
+    saldoResumenTabla,
+    montoSaldoInicialExcel
   );
   
   movimientosConSaldo = movimientosFiltrados.map(mov => ({
@@ -692,16 +748,17 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
     });
   }
   
+  // Total Pagado: solo pagos reales (no incluir saldo inicial)
+  const totalPagadoMostrarExcel = cuentaCorriente.totales.total_pagado || 0;
   worksheet.getCell(`A${dataRow}`).value = totalChequesRebotados > 0 ? 'Total Pagado (con cheques rebotados):' : 'Total Pagado:';
   worksheet.getCell(`A${dataRow}`).font = { bold: true };
   worksheet.getCell(`A${dataRow}`).border = borderStyle;
   worksheet.mergeCells(`B${dataRow}:H${dataRow}`);
-  worksheet.getCell(`B${dataRow}`).value = formatearMonedaConSimbolo(cuentaCorriente.totales.total_pagado || 0);
+  worksheet.getCell(`B${dataRow}`).value = formatearMonedaConSimbolo(totalPagadoMostrarExcel);
   worksheet.getCell(`B${dataRow}`).alignment = { horizontal: 'right' };
   worksheet.getCell(`B${dataRow}`).font = { bold: true, color: { argb: totalChequesRebotados > 0 ? 'FFDC3545' : 'FF28A745' } };
   worksheet.getCell(`B${dataRow}`).border = borderStyle;
   
-  // Mostrar detalle de cheques rebotados si existen
   if (totalChequesRebotados > 0) {
     dataRow++;
     worksheet.getCell(`A${dataRow}`).value = '⚠️ Cheques rebotados:';
@@ -715,15 +772,24 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
   }
   
   dataRow++;
-  
-  // Saldo Pendiente
-  worksheet.getCell(`A${dataRow}`).value = 'Saldo Pendiente:';
+
+  // Saldo Pendiente (ya incluye saldo inicial desde el backend cuando existe)
+  const saldoPendienteAjustado = cuentaCorriente.totales.total_pendiente ?? ((cuentaCorriente.totales.total_remitos || 0) - (cuentaCorriente.totales.total_pagado || 0) - montoSaldoInicialExcel);
+  const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
+  // Si total_pendiente es negativo, saldo a favor = saldo neto (no restar otra vez lo aplicado)
+  const saldoAFavorMostrar = saldoPendienteAjustado < 0
+    ? Math.abs(saldoPendienteAjustado)
+    : (montoSaldoInicialExcel > 0 ? Math.max(0, montoSaldoInicialExcel - sumaAplicadoSaldoFavor) : 0);
+  const labelSaldo = saldoPendienteAjustado > 0 ? 'Saldo Pendiente:' : (saldoAFavorMostrar > 0 ? 'Saldo a Favor:' : 'Saldo:');
+  const valorSaldo = saldoPendienteAjustado > 0 ? Math.abs(saldoPendienteAjustado) : saldoAFavorMostrar;
+  const colorSaldo = saldoPendienteAjustado > 0 ? 'FFDC3545' : (saldoAFavorMostrar > 0 ? 'FF28A745' : 'FF6C757D');
+  worksheet.getCell(`A${dataRow}`).value = labelSaldo;
   worksheet.getCell(`A${dataRow}`).font = { bold: true };
   worksheet.getCell(`A${dataRow}`).border = borderStyle;
   worksheet.mergeCells(`B${dataRow}:H${dataRow}`);
-  worksheet.getCell(`B${dataRow}`).value = formatearMonedaConSimbolo(cuentaCorriente.totales.total_pendiente || 0);
+  worksheet.getCell(`B${dataRow}`).value = formatearMonedaConSimbolo(valorSaldo);
   worksheet.getCell(`B${dataRow}`).alignment = { horizontal: 'right' };
-  worksheet.getCell(`B${dataRow}`).font = { bold: true, color: { argb: 'FFDC3545' } };
+  worksheet.getCell(`B${dataRow}`).font = { bold: true, color: { argb: colorSaldo } };
   worksheet.getCell(`B${dataRow}`).border = borderStyle;
   
   dataRow += 2;

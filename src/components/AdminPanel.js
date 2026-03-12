@@ -11,6 +11,16 @@ function AdminPanel({ usuario, onClose }) {
   const [usuarios, setUsuarios] = useState([]);
   const [auditoria, setAuditoria] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingAuditoria, setLoadingAuditoria] = useState(false);
+  const [filtrosAuditoria, setFiltrosAuditoria] = useState({
+    tabla: '',
+    usuarioId: '',
+    accion: '',
+    fechaDesde: '',
+    fechaHasta: '',
+    registroId: ''
+  });
+  const [auditoriaSeleccionados, setAuditoriaSeleccionados] = useState(new Set());
   
   // Estado para nuevo usuario
   const [showNuevoUsuario, setShowNuevoUsuario] = useState(false);
@@ -25,8 +35,12 @@ function AdminPanel({ usuario, onClose }) {
   useEffect(() => {
     if (activeSection === 'errores') cargarErrores();
     if (activeSection === 'usuarios') cargarUsuarios();
-    if (activeSection === 'auditoria') cargarAuditoria();
+    if (activeSection === 'auditoria') {
+      cargarAuditoria();
+      if (usuarios.length === 0) cargarUsuarios(); // Cargar usuarios para el filtro
+    }
   }, [activeSection]);
+
 
   const cargarErrores = async () => {
     setLoading(true);
@@ -55,18 +69,24 @@ function AdminPanel({ usuario, onClose }) {
   };
 
   const cargarAuditoria = async () => {
-    setLoading(true);
+    setLoadingAuditoria(true);
+    setAuditoriaSeleccionados(new Set());
     try {
-      if (window.electronAPI && window.electronAPI.mysql && window.electronAPI.mysql.getAuditoria) {
-        const data = await window.electronAPI.mysql.getAuditoria({ limit: 100 });
+      if (window.electronAPI && window.electronAPI.invoke) {
+        const params = { limit: 2000 };
+        if (filtrosAuditoria.tabla) params.tabla = filtrosAuditoria.tabla;
+        if (filtrosAuditoria.usuarioId) params.usuario_id = parseInt(filtrosAuditoria.usuarioId, 10);
+        if (filtrosAuditoria.accion) params.accion = filtrosAuditoria.accion;
+        if (filtrosAuditoria.fechaDesde) params.fechaDesde = filtrosAuditoria.fechaDesde;
+        if (filtrosAuditoria.fechaHasta) params.fechaHasta = filtrosAuditoria.fechaHasta;
+        if (filtrosAuditoria.registroId) params.registro_id = parseInt(filtrosAuditoria.registroId);
+        const data = await window.electronAPI.invoke('mysql:getAuditoria', params);
         setAuditoria(data || []);
-      } else {
-        console.error('electronAPI.mysql.getAuditoria no disponible');
       }
     } catch (error) {
       console.error('Error cargando auditoría:', error);
     } finally {
-      setLoading(false);
+      setLoadingAuditoria(false);
     }
   };
 
@@ -78,7 +98,7 @@ function AdminPanel({ usuario, onClose }) {
         if (window.electronAPI && window.electronAPI.mysql && window.electronAPI.mysql.deleteAuditoria) {
           await window.electronAPI.mysql.deleteAuditoria(auditoriaId);
           alertNoBloqueante('Registro de auditoría eliminado', 'success');
-          cargarAuditoria(); // Recargar lista
+          cargarAuditoria();
         } else {
           alertNoBloqueante('Servicio no disponible', 'error');
         }
@@ -87,6 +107,48 @@ function AdminPanel({ usuario, onClose }) {
         alertNoBloqueante('Error al eliminar auditoría: ' + (error.message || 'Error desconocido'), 'error');
       }
     });
+  };
+
+  const toggleAuditoriaSeleccionado = (id) => {
+    setAuditoriaSeleccionados(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const seleccionarTodosAuditoria = (checked) => {
+    if (checked) setAuditoriaSeleccionados(new Set(auditoria.map(log => log.id)));
+    else setAuditoriaSeleccionados(new Set());
+  };
+
+  const handleBorrarAuditoriaSeleccionadas = async () => {
+    if (auditoriaSeleccionados.size === 0) {
+      alertNoBloqueante('Seleccioná al menos un registro', 'warning');
+      return;
+    }
+    const confirmado = await confirmNoBloqueante(
+      `¿Eliminar ${auditoriaSeleccionados.size} registro(s) de auditoría?\n\nEsta acción no se puede deshacer.`
+    );
+    if (!confirmado) return;
+    try {
+      if (window.electronAPI && window.electronAPI.mysql && window.electronAPI.mysql.deleteAuditoriaBulk) {
+        const result = await window.electronAPI.mysql.deleteAuditoriaBulk(Array.from(auditoriaSeleccionados));
+        if (result && result.success) {
+          alertNoBloqueante(`Eliminados ${result.deleted || auditoriaSeleccionados.size} registro(s)`, 'success');
+          setAuditoriaSeleccionados(new Set());
+          cargarAuditoria();
+        } else {
+          alertNoBloqueante(result?.error || 'Error al eliminar', 'error');
+        }
+      } else {
+        alertNoBloqueante('Servicio no disponible', 'error');
+      }
+    } catch (error) {
+      console.error('Error eliminando auditoría en lote:', error);
+      alertNoBloqueante('Error: ' + (error.message || 'Error desconocido'), 'error');
+    }
   };
 
   const handleResolverError = async (errorId) => {
@@ -563,7 +625,102 @@ function AdminPanel({ usuario, onClose }) {
                     </button>
                   </div>
 
-                  {auditoria.length === 0 ? (
+                  {/* Filtros - solo para admin */}
+                  {usuario && usuario.rol === 'admin' && (
+                    <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: theme === 'dark' ? '#252525' : '#f0f0f0', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: theme === 'dark' ? '#e0e0e0' : '#333' }}>🔍 Filtros</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Categoría</label>
+                          <select
+                            value={filtrosAuditoria.tabla}
+                            onChange={e => setFiltrosAuditoria({ ...filtrosAuditoria, tabla: e.target.value })}
+                            style={{ width: '100%', padding: '6px', backgroundColor: theme === 'dark' ? '#404040' : '#fff', color: theme === 'dark' ? '#e0e0e0' : 'inherit', border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}` }}
+                          >
+                            <option value="">Todas</option>
+                            <option value="clientes">Clientes</option>
+                            <option value="articulos">Artículos</option>
+                            <option value="remitos">Remitos</option>
+                            <option value="pagos">Pagos</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Usuario (app)</label>
+                          <select
+                            value={filtrosAuditoria.usuarioId}
+                            onChange={e => setFiltrosAuditoria({ ...filtrosAuditoria, usuarioId: e.target.value })}
+                            style={{ width: '100%', padding: '6px', backgroundColor: theme === 'dark' ? '#404040' : '#fff', color: theme === 'dark' ? '#e0e0e0' : 'inherit', border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}` }}
+                          >
+                            <option value="">Todos</option>
+                            {usuarios.map(u => (
+                              <option key={u.id} value={String(u.id)}>{u.nombre_completo || u.username || 'Usuario ' + u.id}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Acción</label>
+                          <select
+                            value={filtrosAuditoria.accion}
+                            onChange={e => setFiltrosAuditoria({ ...filtrosAuditoria, accion: e.target.value })}
+                            style={{ width: '100%', padding: '6px', backgroundColor: theme === 'dark' ? '#404040' : '#fff', color: theme === 'dark' ? '#e0e0e0' : 'inherit', border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}` }}
+                          >
+                            <option value="">Todas</option>
+                            <option value="crear">Crear</option>
+                            <option value="editar">Editar</option>
+                            <option value="eliminar">Eliminar</option>
+                            <option value="INSERT">INSERT</option>
+                            <option value="UPDATE">UPDATE</option>
+                            <option value="DELETE">DELETE</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Fecha Desde</label>
+                          <input type="date" value={filtrosAuditoria.fechaDesde} onChange={e => setFiltrosAuditoria({ ...filtrosAuditoria, fechaDesde: e.target.value })} style={{ width: '100%', padding: '6px', backgroundColor: theme === 'dark' ? '#404040' : '#fff', color: theme === 'dark' ? '#e0e0e0' : 'inherit', border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}` }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Fecha Hasta</label>
+                          <input type="date" value={filtrosAuditoria.fechaHasta} onChange={e => setFiltrosAuditoria({ ...filtrosAuditoria, fechaHasta: e.target.value })} style={{ width: '100%', padding: '6px', backgroundColor: theme === 'dark' ? '#404040' : '#fff', color: theme === 'dark' ? '#e0e0e0' : 'inherit', border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}` }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>ID Registro</label>
+                          <input type="number" value={filtrosAuditoria.registroId} onChange={e => setFiltrosAuditoria({ ...filtrosAuditoria, registroId: e.target.value })} placeholder="ID" style={{ width: '100%', padding: '6px', backgroundColor: theme === 'dark' ? '#404040' : '#fff', color: theme === 'dark' ? '#e0e0e0' : 'inherit', border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}` }} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+                          <button onClick={cargarAuditoria} disabled={loadingAuditoria} style={{ padding: '6px 14px', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: loadingAuditoria ? 'not-allowed' : 'pointer', opacity: loadingAuditoria ? 0.7 : 1 }}>{loadingAuditoria ? '...' : 'Aplicar'}</button>
+                          <button onClick={() => { setFiltrosAuditoria({ tabla: '', usuarioId: '', accion: '', fechaDesde: '', fechaHasta: '', registroId: '' }); }} style={{ padding: '6px 12px', backgroundColor: theme === 'dark' ? '#555' : '#ddd', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Limpiar</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Borrar seleccionadas - solo admin */}
+                  {usuario && usuario.rol === 'admin' && auditoriaSeleccionados.size > 0 && (
+                    <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <button
+                        onClick={handleBorrarAuditoriaSeleccionadas}
+                        style={{ padding: '8px 14px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                      >
+                        🗑️ Borrar seleccionadas ({auditoriaSeleccionados.size})
+                      </button>
+                      <span style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>Solo para limpiar pruebas</span>
+                    </div>
+                  )}
+
+                  {usuario && usuario.rol === 'admin' && auditoria.length > 0 && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                        <input type="checkbox" checked={auditoria.every(r => auditoriaSeleccionados.has(r.id))} onChange={e => seleccionarTodosAuditoria(e.target.checked)} />
+                        Seleccionar todos
+                      </label>
+                    </div>
+                  )}
+
+                  {loadingAuditoria ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: theme === 'dark' ? '#999' : '#666' }}>
+                      <div style={{ fontSize: '32px', marginBottom: '10px' }}>⏳</div>
+                      <p>Cargando...</p>
+                    </div>
+                  ) : auditoria.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: theme === 'dark' ? '#999' : '#666' }}>
                       <div style={{ fontSize: '48px', marginBottom: '15px' }}>📋</div>
                       <p>No hay registros de auditoría</p>
@@ -624,12 +781,21 @@ function AdminPanel({ usuario, onClose }) {
                           <div
                             key={log.id}
                             style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '12px',
                               backgroundColor: theme === 'dark' ? '#2d2d2d' : '#f8f9fa',
                               borderRadius: '8px',
                               padding: '15px',
                               border: `1px solid ${theme === 'dark' ? '#333' : '#eee'}`
                             }}
                           >
+                            {usuario && usuario.rol === 'admin' && (
+                              <div style={{ flex: '0 0 24px', paddingTop: '2px' }} onClick={e => e.stopPropagation()}>
+                                <input type="checkbox" checked={auditoriaSeleccionados.has(log.id)} onChange={() => toggleAuditoriaSeleccionado(log.id)} title="Seleccionar para borrar" />
+                              </div>
+                            )}
+                            <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: cambiosDetectados.length > 0 ? '10px' : '0' }}>
                               <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
@@ -687,6 +853,7 @@ function AdminPanel({ usuario, onClose }) {
                                 )}
                               </div>
                             </div>
+                            </div>
                           </div>
                         );
                       })}
@@ -704,14 +871,14 @@ function AdminPanel({ usuario, onClose }) {
 
 // Helper para colores de acciones
 function getAccionColor(accion) {
+  const a = (accion || '').toString();
   const colores = {
-    'CREATE': '#28a745',
-    'UPDATE': '#ffc107',
-    'DELETE': '#dc3545',
-    'LOGIN': '#17a2b8',
-    'LOGOUT': '#6c757d'
+    'CREATE': '#28a745', 'crear': '#28a745',
+    'UPDATE': '#ffc107', 'editar': '#ffc107',
+    'DELETE': '#dc3545', 'eliminar': '#dc3545',
+    'LOGIN': '#17a2b8', 'LOGOUT': '#6c757d'
   };
-  return colores[accion] || '#667eea';
+  return colores[a] || '#667eea';
 }
 
 export default AdminPanel;

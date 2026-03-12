@@ -22,8 +22,8 @@ try {
       // Clientes
       getClientes: () => ipcRenderer.invoke('mysql:getClientes'),
       getCliente: (id) => ipcRenderer.invoke('mysql:getCliente', id),
-      createCliente: (cliente) => ipcRenderer.invoke('mysql:createCliente', cliente),
-      updateCliente: (id, cliente) => ipcRenderer.invoke('mysql:updateCliente', id, cliente),
+      createCliente: (cliente, saldoInicialData) => ipcRenderer.invoke('mysql:createCliente', cliente, saldoInicialData),
+      updateCliente: (id, cliente, saldoInicialData) => ipcRenderer.invoke('mysql:updateCliente', id, cliente, saldoInicialData),
       deleteCliente: (id) => ipcRenderer.invoke('mysql:deleteCliente', id),
       
       // Artículos
@@ -52,6 +52,10 @@ try {
       getCuentaCorriente: (clienteId) => ipcRenderer.invoke('mysql:getCuentaCorriente', clienteId),
       getResumenGeneral: (fechaDesde, fechaHasta) => ipcRenderer.invoke('mysql:getResumenGeneral', fechaDesde, fechaHasta),
       
+      // Saldos iniciales
+      getSaldoInicialCliente: (clienteId) => ipcRenderer.invoke('mysql:getSaldoInicialCliente', clienteId),
+      setSaldoInicialCliente: (data) => ipcRenderer.invoke('mysql:setSaldoInicialCliente', data),
+      
       // Usuarios y autenticación
       login: (username, password) => ipcRenderer.invoke('mysql:login', { username, password }),
       getUsuarios: () => ipcRenderer.invoke('mysql:getUsuarios'),
@@ -65,7 +69,8 @@ try {
       // Auditoría
       getAuditoria: (params) => ipcRenderer.invoke('mysql:getAuditoria', params),
       registrarAuditoria: (data) => ipcRenderer.invoke('mysql:registrarAuditoria', data),
-      deleteAuditoria: (auditoriaId) => ipcRenderer.invoke('mysql:deleteAuditoria', auditoriaId)
+      deleteAuditoria: (auditoriaId) => ipcRenderer.invoke('mysql:deleteAuditoria', auditoriaId),
+      deleteAuditoriaBulk: (ids) => ipcRenderer.invoke('mysql:deleteAuditoriaBulk', ids)
     },
     
     // Actualizaciones automáticas

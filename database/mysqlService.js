@@ -19,6 +19,7 @@ const dbConfig = {
 };
 
 let pool = null;
+let saldosInicialesReadyPromise = null;
 
 // Usuario actual para auditoría
 let usuarioActual = null;
@@ -40,6 +41,30 @@ const getPool = () => {
     console.log('✓ Pool de MySQL creado');
   }
   return pool;
+};
+
+const ensureSaldosInicialesTable = async () => {
+  if (!saldosInicialesReadyPromise) {
+    saldosInicialesReadyPromise = getPool().execute(`
+      CREATE TABLE IF NOT EXISTS saldos_iniciales (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        cliente_id INT NOT NULL,
+        fecha_referencia DATE NOT NULL,
+        monto DECIMAL(15,2) NOT NULL DEFAULT 0,
+        descripcion VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_cliente (cliente_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `).then(() => {
+      console.log('✓ Tabla saldos_iniciales lista');
+    }).catch(err => {
+      saldosInicialesReadyPromise = null;
+      console.warn('No se pudo crear tabla saldos_iniciales:', err.message);
+      throw err;
+    });
+  }
+  return saldosInicialesReadyPromise;
 };
 
 // Probar conexión
@@ -283,7 +308,7 @@ const getCliente = async (id) => {
   return rows[0] || null;
 };
 
-const createCliente = async (cliente) => {
+const createCliente = async (cliente, saldoInicialData = null) => {
   const { nombre, telefono, direccion, email, observaciones } = cliente;
   const [result] = await getPool().execute(
     'INSERT INTO clientes (nombre, telefono, direccion, email, observaciones) VALUES (?, ?, ?, ?, ?)',
@@ -291,17 +316,21 @@ const createCliente = async (cliente) => {
   );
   const clienteCreado = { id: result.insertId, ...cliente };
   
-  // Obtener usuario actual
   const usuario = getUsuarioActual();
   const nombreUsuario = usuario.nombre_completo || 'Sistema';
-  
-  // Filtrar campos técnicos
   const datosNuevosFiltrados = filtrarCamposTecnicos(clienteCreado);
   
-  // Crear descripción detallada
-  const descripcion = `Cliente "${nombre}" creado por ${nombreUsuario}`;
+  let descripcion = `Cliente "${nombre}" creado por ${nombreUsuario}`;
   
-  // Registrar auditoría
+  if (saldoInicialData && saldoInicialData.monto != null && saldoInicialData.monto !== 0) {
+    const m = saldoInicialData.monto;
+    const signo = m >= 0 ? 'a favor' : 'en contra';
+    descripcion += ` | Saldo inicial: $${formatearMoneda(Math.abs(m))} (${signo})`;
+    datosNuevosFiltrados.saldo_inicial = m;
+    datosNuevosFiltrados.saldo_fecha = saldoInicialData.fecha_referencia;
+    datosNuevosFiltrados.saldo_descripcion = saldoInicialData.descripcion;
+  }
+  
   registrarAuditoria({
     accion: 'crear',
     tabla_afectada: 'clientes',
@@ -313,8 +342,7 @@ const createCliente = async (cliente) => {
   return clienteCreado;
 };
 
-const updateCliente = async (id, cliente) => {
-  // Obtener datos anteriores
+const updateCliente = async (id, cliente, saldoInicialData = null) => {
   const [clientesAnteriores] = await getPool().execute('SELECT * FROM clientes WHERE id = ?', [id]);
   const datosAnteriores = clientesAnteriores[0];
   
@@ -325,11 +353,9 @@ const updateCliente = async (id, cliente) => {
   );
   const clienteActualizado = { id, ...cliente };
   
-  // Obtener usuario actual
   const usuario = getUsuarioActual();
   const nombreUsuario = usuario.nombre_completo || 'Sistema';
   
-  // Detectar cambios
   const cambios = [];
   if (datosAnteriores.nombre !== nombre) {
     cambios.push({ campo: 'Nombre', anterior: datosAnteriores.nombre, nuevo: nombre });
@@ -347,11 +373,34 @@ const updateCliente = async (id, cliente) => {
     cambios.push({ campo: 'Observaciones', anterior: datosAnteriores.observaciones || 'Sin observaciones', nuevo: observaciones || 'Sin observaciones' });
   }
   
-  // Filtrar campos técnicos
+  // Incluir cambios de saldo inicial si se proporcionaron
+  if (saldoInicialData && saldoInicialData.monto != null) {
+    const saldoAnterior = saldoInicialData.anterior;
+    const montoAnterior = saldoAnterior ? parseFloat(saldoAnterior.monto || 0) : 0;
+    const montoNuevo = saldoInicialData.monto;
+    if (montoAnterior !== montoNuevo) {
+      const signoAnt = montoAnterior >= 0 ? 'a favor' : 'en contra';
+      const signoNuevo = montoNuevo >= 0 ? 'a favor' : 'en contra';
+      if (montoAnterior === 0 && montoNuevo !== 0) {
+        cambios.push({ campo: 'Saldo Inicial', anterior: 'Sin saldo', nuevo: `$${formatearMoneda(Math.abs(montoNuevo))} (${signoNuevo})` });
+      } else if (montoNuevo === 0) {
+        cambios.push({ campo: 'Saldo Inicial', anterior: `$${formatearMoneda(Math.abs(montoAnterior))} (${signoAnt})`, nuevo: 'Sin saldo' });
+      } else {
+        cambios.push({ campo: 'Saldo Inicial', anterior: `$${formatearMoneda(Math.abs(montoAnterior))} (${signoAnt})`, nuevo: `$${formatearMoneda(Math.abs(montoNuevo))} (${signoNuevo})` });
+      }
+    }
+  }
+  
   const datosAnterioresFiltrados = filtrarCamposTecnicos(datosAnteriores);
   const datosNuevosFiltrados = filtrarCamposTecnicos(clienteActualizado);
   
-  // Crear descripción detallada
+  if (saldoInicialData) {
+    if (saldoInicialData.anterior) {
+      datosAnterioresFiltrados.saldo_inicial = parseFloat(saldoInicialData.anterior.monto || 0);
+    }
+    datosNuevosFiltrados.saldo_inicial = saldoInicialData.monto;
+  }
+  
   let descripcion = `Cliente "${nombre}" modificado por ${nombreUsuario}`;
   if (cambios.length > 0) {
     const cambiosTexto = cambios.map(c => `${c.campo}: ${c.anterior} → ${c.nuevo}`).join(' | ');
@@ -360,7 +409,6 @@ const updateCliente = async (id, cliente) => {
     descripcion += ' | Sin cambios específicos detectados';
   }
   
-  // Registrar auditoría
   registrarAuditoria({
     accion: 'editar',
     tabla_afectada: 'clientes',
@@ -1324,10 +1372,10 @@ const deletePago = async (id) => {
     remitosAfectados.add(remitoId);
   }
   
-  // Si tiene REMITOS_DETALLE, extraer todos los remitos afectados
+  // Si tiene REMITOS_DETALLE, extraer todos los remitos afectados (capturar solo el JSON array, no el resto de la línea)
   if (observaciones.includes('REMITOS_DETALLE:')) {
     try {
-      const match = observaciones.match(/REMITOS_DETALLE:(.+)$/);
+      const match = observaciones.match(/REMITOS_DETALLE:(\[.*\])\s*(?:PAGO_GRUPO_ID:\S+)?/);
       if (match) {
         const remitosDetalle = JSON.parse(match[1]);
         remitosDetalle.forEach(r => {
@@ -1989,17 +2037,98 @@ const getCuentaCorriente = async (clienteId) => {
   remitos.forEach(remito => {
     remito.monto_pagado = montoPorRemito[remito.id] || 0;
   });
-  
+
+  // Saldo inicial del cliente (si existe en tabla saldos_iniciales)
+  let saldoInicial = null;
+  try {
+    const pool = getPool();
+    const [rowsSaldo] = await pool.execute(
+      `SELECT id, cliente_id, fecha_referencia, monto, descripcion 
+       FROM saldos_iniciales 
+       WHERE cliente_id = ? 
+       ORDER BY fecha_referencia LIMIT 1`,
+      [clienteId]
+    );
+    if (rowsSaldo && rowsSaldo.length > 0) {
+      saldoInicial = rowsSaldo[0];
+    }
+  } catch (e) {
+    console.warn('Tabla saldos_iniciales no encontrada o error al leer saldo inicial:', e.message);
+  }
+
+  const montoSI = saldoInicial ? parseFloat(saldoInicial.monto || 0) : 0;
+
+  // Crédito restante = saldo inicial menos lo ya aplicado ("Saldo a favor aplicado")
+  let sumaSaldoAFavorAplicado = 0;
+  pagosCliente.forEach(p => {
+    if ((String(p.observaciones || '').toLowerCase()).includes('saldo a favor aplicado')) {
+      sumaSaldoAFavorAplicado += parseFloat(p.monto || 0) || 0;
+    }
+  });
+  const creditoRestante = Math.max(0, montoSI - sumaSaldoAFavorAplicado);
+  const totalPendiente = totalRemitos - totalPagado - creditoRestante;
+
   return {
     cliente_id: clienteId,
     remitos,
     pagos: pagosCliente,
     totales: {
       total_remitos: totalRemitos,
-      total_pagado: totalPagado, // Desde suma de pagos reales, no desde remitos.monto_pagado
-      total_pendiente: totalRemitos - totalPagado
-    }
+      total_pagado: totalPagado,
+      total_pendiente: totalPendiente
+    },
+    saldoInicial
   };
+};
+
+// Obtener saldo inicial de un cliente
+const getSaldoInicialCliente = async (clienteId) => {
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT id, cliente_id, fecha_referencia, monto, descripcion 
+     FROM saldos_iniciales 
+     WHERE cliente_id = ? 
+     ORDER BY fecha_referencia LIMIT 1`,
+    [clienteId]
+  );
+  return rows && rows.length > 0 ? rows[0] : null;
+};
+
+// Establecer/actualizar saldo inicial de un cliente
+const setSaldoInicialCliente = async ({ cliente_id, fecha_referencia, monto, descripcion }) => {
+  const pool = getPool();
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // Obtener datos anteriores para auditoría
+    const [existentes] = await connection.execute(
+      'SELECT id, monto, fecha_referencia, descripcion FROM saldos_iniciales WHERE cliente_id = ? LIMIT 1',
+      [cliente_id]
+    );
+    const anterior = existentes.length > 0 ? existentes[0] : null;
+    const esCrear = !anterior;
+
+    if (anterior) {
+      await connection.execute(
+        'UPDATE saldos_iniciales SET fecha_referencia = ?, monto = ?, descripcion = ? WHERE id = ?',
+        [fecha_referencia, monto, descripcion || null, anterior.id]
+      );
+    } else {
+      await connection.execute(
+        'INSERT INTO saldos_iniciales (cliente_id, fecha_referencia, monto, descripcion) VALUES (?, ?, ?, ?)',
+        [cliente_id, fecha_referencia, monto, descripcion || null]
+      );
+    }
+    await connection.commit();
+    return { success: true, esCrear, anterior };
+  } catch (error) {
+    await connection.rollback();
+    console.error('Error estableciendo saldo inicial:', error);
+    return { success: false, error: error.message };
+  } finally {
+    connection.release();
+  }
 };
 
 const getResumenGeneral = async (fechaDesde = null, fechaHasta = null) => {
@@ -2338,7 +2467,8 @@ const escapeSQL = (value) => {
 const getAuditoria = async (params = {}) => {
   try {
     const pool = getPool();
-    const { limit = 100, offset = 0, tabla_afectada, usuario_id, accion } = params;
+    const { limit = 100, offset = 0, tabla_afectada, tabla, usuario_id, usuario_nombre, usuario, accion, fechaDesde, fechaHasta, registro_id } = params;
+    const usuarioNombreFiltro = usuario_nombre || usuario;
     
     const lim = limit != null ? parseInt(limit, 10) : 100;
     const off = offset != null ? parseInt(offset, 10) : 0;
@@ -2350,22 +2480,36 @@ const getAuditoria = async (params = {}) => {
       throw new Error('Offset debe ser un número válido mayor o igual a 0');
     }
 
-    // Construir query completamente dinámico para evitar problemas con LIMIT/OFFSET en prepared statements
+    const tablaFiltro = tabla_afectada || tabla;
     let query = 'SELECT * FROM auditoria WHERE 1=1';
     
-    if (tabla_afectada) {
-      query += ` AND tabla_afectada = ${escapeSQL(tabla_afectada)}`;
+    if (tablaFiltro) {
+      query += ` AND tabla_afectada = ${escapeSQL(tablaFiltro)}`;
     }
     
     if (usuario_id) {
       query += ` AND usuario_id = ${escapeSQL(parseInt(usuario_id))}`;
+    }
+    if (usuarioNombreFiltro && String(usuarioNombreFiltro).trim()) {
+      query += ` AND usuario_nombre LIKE ${escapeSQL('%' + String(usuarioNombreFiltro).trim() + '%')}`;
     }
     
     if (accion) {
       query += ` AND accion = ${escapeSQL(accion)}`;
     }
     
-    // LIMIT y OFFSET como enteros directamente en el query (ya validados y seguros)
+    if (registro_id != null && registro_id !== '') {
+      const rid = parseInt(registro_id, 10);
+      if (!isNaN(rid)) query += ` AND registro_id = ${rid}`;
+    }
+    
+    if (fechaDesde) {
+      query += ` AND DATE(created_at) >= ${escapeSQL(String(fechaDesde))}`;
+    }
+    if (fechaHasta) {
+      query += ` AND DATE(created_at) <= ${escapeSQL(String(fechaHasta))}`;
+    }
+    
     query += ` ORDER BY created_at DESC LIMIT ${lim} OFFSET ${off}`;
     
     // Usar query sin parámetros para evitar problemas con prepared statements
@@ -2497,6 +2641,29 @@ const deleteAuditoria = async (auditoriaId) => {
   }
 };
 
+// Eliminar varios registros de auditoría (solo admin)
+const deleteAuditoriaBulk = async (ids) => {
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: 'No se especificaron IDs' };
+  }
+  const idsNum = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+  if (idsNum.length === 0) {
+    return { success: false, error: 'IDs inválidos' };
+  }
+  try {
+    const pool = getPool();
+    const placeholders = idsNum.map(() => '?').join(',');
+    const [result] = await pool.execute(
+      `DELETE FROM auditoria WHERE id IN (${placeholders})`,
+      idsNum
+    );
+    return { success: true, deleted: result.affectedRows };
+  } catch (error) {
+    console.error('Error eliminando auditoría en lote:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   testConnection,
   getClientes,
@@ -2536,6 +2703,9 @@ module.exports = {
   cambiarPasswordPrimeraVez,
   getAuditoria,
   registrarAuditoria,
-  deleteAuditoria
+  deleteAuditoria,
+  deleteAuditoriaBulk,
+  getSaldoInicialCliente,
+  setSaldoInicialCliente
 };
 

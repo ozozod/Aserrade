@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as supabaseService from '../services/databaseService';
 import { exportCuentaCorrientePDF, exportResumenGeneralPDF } from '../utils/exportPDF';
 import { exportCuentaCorrienteExcel, exportResumenGeneralExcel } from '../utils/exportExcel';
-import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal } from '../utils/formatoMoneda';
+import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
 
@@ -187,17 +187,25 @@ function Reportes({ clienteIdFromClientes }) {
       };
 
       // Cargar cuenta corriente del cliente
-      const cuentaCorrienteData = await supabaseService.getCuentaCorriente(parseInt(selectedCliente));
+      let cuentaCorrienteData = await supabaseService.getCuentaCorriente(parseInt(selectedCliente));
+      if (!cuentaCorrienteData.saldoInicial) {
+        try {
+          const si = await supabaseService.getSaldoInicialCliente(parseInt(selectedCliente));
+          if (si) cuentaCorrienteData = { ...cuentaCorrienteData, saldoInicial: si };
+        } catch (e) { /* ignorar */ }
+      }
+      const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
+      const sumaSAF = sumarPagosSaldoAFavorAplicado(cuentaCorrienteData.pagos || []);
+      const creditoRestante = Math.max(0, montoSI - sumaSAF);
       
       // Cargar artículos del cliente
       const articulos = await supabaseService.getArticulos();
       const articulosDelCliente = articulos.filter(a => a.cliente_id === cliente.id);
       
-      // Totales generales sin filtrar (para el resumen financiero)
-      const totalesGenerales = cuentaCorrienteData.totales || {
-        total_remitos: 0,
-        total_pagado: 0,
-        total_pendiente: 0
+      // Totales: total_pendiente = remitos - pagado - crédito restante (no saldo inicial completo)
+      const totalesGenerales = {
+        ...(cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 }),
+        total_pendiente: (cuentaCorrienteData.totales?.total_remitos ?? 0) - (cuentaCorrienteData.totales?.total_pagado ?? 0) - creditoRestante
       };
       
       // Filtrar por fechas si se especificaron
@@ -687,17 +695,25 @@ function Reportes({ clienteIdFromClientes }) {
                   setExportando(true);
                   try {
                     // Cargar cuenta corriente del cliente
-                    const cuentaCorrienteData = await supabaseService.getCuentaCorriente(parseInt(selectedCliente));
+                    let cuentaCorrienteData = await supabaseService.getCuentaCorriente(parseInt(selectedCliente));
+                    if (!cuentaCorrienteData.saldoInicial) {
+                      try {
+                        const si = await supabaseService.getSaldoInicialCliente(parseInt(selectedCliente));
+                        if (si) cuentaCorrienteData = { ...cuentaCorrienteData, saldoInicial: si };
+                      } catch (e) { /* ignorar */ }
+                    }
+                    const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
+                    const sumaSAF = sumarPagosSaldoAFavorAplicado(cuentaCorrienteData.pagos || []);
+                    const creditoRestante = Math.max(0, montoSI - sumaSAF);
                     
                     // Cargar artículos del cliente
                     const articulos = await supabaseService.getArticulos();
                     const articulosDelCliente = articulos.filter(a => a.cliente_id === cliente.id);
                     
-                    // Guardar totales generales ANTES de filtrar
-                    const totalesGenerales = cuentaCorrienteData.totales || {
-                      total_remitos: 0,
-                      total_pagado: 0,
-                      total_pendiente: 0
+                    // Totales: total_pendiente = remitos - pagado - crédito restante
+                    const totalesGenerales = {
+                      ...(cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 }),
+                      total_pendiente: (cuentaCorrienteData.totales?.total_remitos ?? 0) - (cuentaCorrienteData.totales?.total_pagado ?? 0) - creditoRestante
                     };
                     
                     // Preparar datos sin filtros de fecha (exportar todo)
@@ -949,24 +965,22 @@ function Reportes({ clienteIdFromClientes }) {
 
           {/* Resumen mejorado con cálculo correcto de total pagado */}
           {(() => {
-            // Recalcular total remitos desde remitos filtrados (más preciso)
             const totalRemitosReal = remitosFiltrados.reduce((sum, remito) => {
               return sum + parseFloat(remito.precio_total || 0);
             }, 0);
             
-            // Calcular total pagado desde los remitos filtrados (monto_pagado ya incluye pagos ocultos)
-            // Esto asegura consistencia cuando hay filtros de fecha
-            const totalPagadoReal = remitosFiltrados.reduce((sum, remito) => {
+            // Saldo inicial: en contra se suma a Total Pendiente; no se suma a Total Pagado (Total Pagado = solo pagos reales)
+            const montoSI = cuentaCorriente.saldoInicial ? parseFloat(cuentaCorriente.saldoInicial.monto || 0) : 0;
+            const pagosReales = remitosFiltrados.reduce((sum, remito) => {
               return sum + parseFloat(remito.monto_pagado || 0);
             }, 0);
+            const totalPagadoReal = pagosReales;
             
-            // Calcular total de cheques rebotados para mostrar en rojo
             let totalChequesRebotados = 0;
             if (cuentaCorriente.pagos) {
               cuentaCorriente.pagos.forEach(pago => {
                 if (pago.cheque_rebotado && parseFloat(pago.monto || 0) > 0) {
                   const obs = pago.observaciones || '';
-                  // Excluir encabezados
                   if (!(parseFloat(pago.monto || 0) === 0 && obs.includes('REMITOS_DETALLE:'))) {
                     totalChequesRebotados += parseFloat(pago.monto || 0);
                   }
@@ -974,8 +988,13 @@ function Reportes({ clienteIdFromClientes }) {
               });
             }
             
-            // Recalcular total pendiente con el total pagado real
-            const totalPendienteReal = totalRemitosReal - totalPagadoReal;
+            // Total pendiente = remitos - pagado - crédito restante (saldo inicial menos lo ya aplicado)
+            const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
+            const creditoRestante = Math.max(0, montoSI - sumaAplicadoSaldoFavor);
+            const totalPendienteReal = totalRemitosReal - pagosReales - creditoRestante;
+            const saldoAFavorMostrar = totalPendienteReal < 0
+              ? Math.max(0, Math.abs(totalPendienteReal) - sumaAplicadoSaldoFavor)
+              : 0;
             
             return (
               <div className="card" style={{ 
@@ -1092,7 +1111,7 @@ function Reportes({ clienteIdFromClientes }) {
                           : '#28a745'
                     }}>
                       {totalPendienteReal < 0
-                        ? formatearMonedaConSimbolo(Math.abs(totalPendienteReal))
+                        ? formatearMonedaConSimbolo(saldoAFavorMostrar)
                         : formatearMonedaConSimbolo(totalPendienteReal)
                       }
                     </div>
@@ -1704,17 +1723,21 @@ function Reportes({ clienteIdFromClientes }) {
               </tbody>
               <tfoot>
                 {(() => {
-                  // Recalcular total remitos desde remitos filtrados
                   const totalRemitosReal = remitosFiltrados.reduce((sum, remito) => {
                     return sum + parseFloat(remito.precio_total || 0);
                   }, 0);
                   
-                  // Calcular total pagado desde los remitos filtrados
-                  const totalPagadoReal = remitosFiltrados.reduce((sum, remito) => {
+                  const montoSI = cuentaCorriente?.saldoInicial ? parseFloat(cuentaCorriente.saldoInicial.monto || 0) : 0;
+                  const pagosReales = remitosFiltrados.reduce((sum, remito) => {
                     return sum + parseFloat(remito.monto_pagado || 0);
                   }, 0);
-                  
-                  const totalPendienteReal = totalRemitosReal - totalPagadoReal;
+                  const totalPagadoReal = pagosReales;
+                  const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente?.pagos);
+                  const creditoRestante = Math.max(0, montoSI - sumaAplicadoSaldoFavor);
+                  const totalPendienteReal = totalRemitosReal - pagosReales - creditoRestante;
+                  const saldoAFavorMostrar = totalPendienteReal < 0
+                    ? Math.max(0, Math.abs(totalPendienteReal) - sumaAplicadoSaldoFavor)
+                    : 0;
                   
                   return (
                     <tr style={{ 
@@ -1760,7 +1783,7 @@ function Reportes({ clienteIdFromClientes }) {
                         fontWeight: 'bold'
                       }}>
                         {totalPendienteReal < 0
-                          ? formatearMonedaConSimbolo(Math.abs(totalPendienteReal))
+                          ? formatearMonedaConSimbolo(saldoAFavorMostrar)
                           : formatearMonedaConSimbolo(totalPendienteReal)
                         }
                       </td>

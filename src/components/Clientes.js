@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import * as supabaseService from '../services/databaseService';
+import * as databaseService from '../services/databaseService';
 import { exportCuentaCorrientePDF } from '../utils/exportPDF';
 import { exportCuentaCorrienteExcel } from '../utils/exportExcel';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
-import { formatearMonedaConSimbolo } from '../utils/formatoMoneda';
+import { formatearMonedaConSimbolo, formatearNumeroVisual, limpiarFormatoNumero, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
 import { alertNoBloqueante, confirmNoBloqueante } from '../utils/notificaciones';
 
 function Clientes({ onNavigate }) {
@@ -46,7 +47,11 @@ function Clientes({ onNavigate }) {
     telefono: '',
     direccion: '',
     email: '',
-    observaciones: ''
+    observaciones: '',
+    saldoInicialMonto: '',
+    saldoInicialDescripcion: '',
+    saldoInicialFecha: '',
+    saldoInicialEsNegativo: false
   });
 
   // Sincronizar datos del caché con estado local
@@ -321,10 +326,55 @@ function Clientes({ onNavigate }) {
     setIsSubmitting(true);
     
     try {
+      const { saldoInicialMonto, saldoInicialDescripcion, saldoInicialFecha, saldoInicialEsNegativo, ...clientePayload } = formData;
+      let clienteId = editingCliente ? editingCliente.id : null;
+      
+      // Preparar datos de saldo inicial para auditoría unificada
+      const montoLimpio = saldoInicialMonto ? limpiarFormatoNumero(String(saldoInicialMonto)) : '';
+      const montoNum = montoLimpio !== '' ? parseFloat(montoLimpio) : NaN;
+      let saldoInicialParaAuditoria = null;
+      
+      if (!isNaN(montoNum) && montoNum !== 0) {
+        const montoFinal = saldoInicialEsNegativo ? -Math.abs(montoNum) : montoNum;
+        const fechaRef = saldoInicialFecha || `${new Date().getFullYear()}-01-19`;
+        saldoInicialParaAuditoria = {
+          monto: montoFinal,
+          fecha_referencia: fechaRef,
+          descripcion: saldoInicialDescripcion || `Saldo inicial al ${fechaRef.split('-').reverse().join('/')}`
+        };
+      }
+      
       if (editingCliente) {
-        await supabaseService.updateCliente(editingCliente.id, formData);
+        // Obtener saldo anterior para comparar en auditoría
+        let saldoAnterior = null;
+        try {
+          saldoAnterior = await databaseService.getSaldoInicialCliente(editingCliente.id);
+        } catch (e) { /* ignorar */ }
+        
+        if (saldoInicialParaAuditoria) {
+          saldoInicialParaAuditoria.anterior = saldoAnterior;
+        } else if (saldoAnterior && parseFloat(saldoAnterior.monto || 0) !== 0) {
+          saldoInicialParaAuditoria = { monto: 0, anterior: saldoAnterior };
+        }
+        
+        await supabaseService.updateCliente(editingCliente.id, clientePayload, saldoInicialParaAuditoria);
       } else {
-        await supabaseService.createCliente(formData);
+        const nuevo = await supabaseService.createCliente(clientePayload, saldoInicialParaAuditoria);
+        if (nuevo && nuevo.id) {
+          clienteId = nuevo.id;
+        }
+      }
+      
+      // Guardar saldo inicial en la tabla saldos_iniciales (separado de la auditoría)
+      if (clienteId && !isNaN(montoNum) && montoNum !== 0) {
+        const montoFinal = saldoInicialEsNegativo ? -Math.abs(montoNum) : montoNum;
+        const fechaRef = saldoInicialFecha || `${new Date().getFullYear()}-01-19`;
+        await databaseService.setSaldoInicialCliente({
+          cliente_id: clienteId,
+          fecha_referencia: fechaRef,
+          monto: montoFinal,
+          descripcion: saldoInicialDescripcion || `Saldo inicial al ${fechaRef.split('-').reverse().join('/')}`
+        });
       }
       // Invalidar caché y recargar datos relacionados desde la base
       invalidateCache('clientes');
@@ -357,15 +407,45 @@ function Clientes({ onNavigate }) {
     setEditingCliente(cliente);
     setShowForm(true);
     setShowEditModal(true);
-    setFormData({
+    setFormData(prev => ({
+      ...prev,
       nombre: cliente.nombre,
       telefono: cliente.telefono || '',
       direccion: cliente.direccion || '',
       email: cliente.email || '',
-      observaciones: cliente.observaciones || ''
-    });
+      observaciones: cliente.observaciones || '',
+      saldoInicialMonto: '',
+      saldoInicialDescripcion: '',
+      saldoInicialFecha: '',
+      saldoInicialEsNegativo: false
+    }));
     // Abrir modal flotante
     setShowForm(true);
+    
+    // Cargar saldo inicial del cliente
+    databaseService.getSaldoInicialCliente(cliente.id)
+      .then(saldo => {
+        if (saldo) {
+          const monto = parseFloat(saldo.monto || 0);
+          let fechaRef = '';
+          if (saldo.fecha_referencia) {
+            const d = new Date(saldo.fecha_referencia);
+            if (!isNaN(d.getTime())) {
+              fechaRef = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+          }
+          setFormData(prev => ({
+            ...prev,
+            saldoInicialMonto: monto !== 0 ? formatearNumeroVisual(String(Math.abs(monto))) : '',
+            saldoInicialDescripcion: saldo.descripcion || '',
+            saldoInicialFecha: fechaRef,
+            saldoInicialEsNegativo: monto < 0
+          }));
+        }
+      })
+      .catch(err => {
+        console.warn('No se pudo cargar saldo inicial del cliente:', err?.message || err);
+      });
   };
 
   const handleDelete = async (id) => {
@@ -489,17 +569,25 @@ function Clientes({ onNavigate }) {
       };
 
       // Cargar cuenta corriente del cliente
-      const cuentaCorrienteData = await supabaseService.getCuentaCorriente(exportCliente.id);
+      let cuentaCorrienteData = await supabaseService.getCuentaCorriente(exportCliente.id);
+      if (!cuentaCorrienteData.saldoInicial) {
+        try {
+          const si = await supabaseService.getSaldoInicialCliente(exportCliente.id);
+          if (si) cuentaCorrienteData = { ...cuentaCorrienteData, saldoInicial: si };
+        } catch (e) { /* ignorar */ }
+      }
+      const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
+      const sumaSAF = sumarPagosSaldoAFavorAplicado(cuentaCorrienteData.pagos || []);
+      const creditoRestante = Math.max(0, montoSI - sumaSAF);
       
       // Cargar artículos del cliente
       const articulos = await supabaseService.getArticulos();
       const articulosDelCliente = articulos.filter(a => a.cliente_id === exportCliente.id);
       
-      // Totales generales sin filtrar (para el resumen financiero)
-      const totalesGenerales = cuentaCorrienteData.totales || {
-        total_remitos: 0,
-        total_pagado: 0,
-        total_pendiente: 0
+      // Totales: total_pendiente = remitos - pagado - crédito restante (no saldo inicial completo)
+      const totalesGenerales = {
+        ...(cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 }),
+        total_pendiente: (cuentaCorrienteData.totales?.total_remitos ?? 0) - (cuentaCorrienteData.totales?.total_pagado ?? 0) - creditoRestante
       };
       
       // Filtrar por fechas si se especificaron
@@ -792,6 +880,130 @@ function Clientes({ onNavigate }) {
               rows="3"
               placeholder="Notas adicionales sobre el cliente"
             />
+          </div>
+
+          <div style={{
+            padding: '16px',
+            marginTop: '8px',
+            marginBottom: '8px',
+            borderRadius: '8px',
+            backgroundColor: theme === 'dark' ? '#1a2a3a' : '#f0f7ff',
+            border: `1px solid ${theme === 'dark' ? '#2a4a6a' : '#b8d8fa'}`
+          }}>
+            <div style={{ marginBottom: '12px', fontWeight: 'bold', color: theme === 'dark' ? '#5dade2' : '#0066cc', fontSize: '13px' }}>
+              💰 Saldo Inicial
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label style={{ fontSize: '13px' }}>Monto</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{
+                    display: 'flex',
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                    border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                    flexShrink: 0
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, saldoInicialEsNegativo: false })}
+                      style={{
+                        padding: '8px 14px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '13px',
+                        backgroundColor: !formData.saldoInicialEsNegativo
+                          ? '#28a745' : (theme === 'dark' ? '#404040' : '#f0f0f0'),
+                        color: !formData.saldoInicialEsNegativo
+                          ? '#fff' : (theme === 'dark' ? '#999' : '#666'),
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      + A favor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, saldoInicialEsNegativo: true })}
+                      style={{
+                        padding: '8px 14px',
+                        border: 'none',
+                        borderLeft: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '13px',
+                        backgroundColor: formData.saldoInicialEsNegativo
+                          ? '#dc3545' : (theme === 'dark' ? '#404040' : '#f0f0f0'),
+                        color: formData.saldoInicialEsNegativo
+                          ? '#fff' : (theme === 'dark' ? '#999' : '#666'),
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      - En contra
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    name="saldoInicialMonto"
+                    value={formData.saldoInicialMonto}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const formatted = formatearNumeroVisual(raw.replace(/-/g, ''));
+                      setFormData({ ...formData, saldoInicialMonto: formatted });
+                    }}
+                    placeholder="Ej: 50.000.000"
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${formData.saldoInicialEsNegativo ? '#dc3545' : (formData.saldoInicialMonto ? '#28a745' : (theme === 'dark' ? '#555' : '#ddd'))}`,
+                      backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                      color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                      fontSize: '15px',
+                      fontWeight: 'bold'
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: '13px' }}>Fecha de referencia</label>
+                <input
+                  type="date"
+                  name="saldoInicialFecha"
+                  value={formData.saldoInicialFecha}
+                  onChange={handleInputChange}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                    backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                    color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                    fontSize: '14px'
+                  }}
+                />
+              </div>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={{ fontSize: '13px' }}>Descripción</label>
+              <input
+                type="text"
+                name="saldoInicialDescripcion"
+                value={formData.saldoInicialDescripcion}
+                onChange={handleInputChange}
+                placeholder="Ej: Saldo al 19/01/2026"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                  backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                  color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
           </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
@@ -1331,31 +1543,36 @@ function Clientes({ onNavigate }) {
                             ⏳ Calculando...
                           </span>
                         )}
-                        {!estaCargando && cuentaCorriente && (
+                        {!estaCargando && cuentaCorriente && (() => {
+                          const pend = cuentaCorriente.totales.total_pendiente;
+                          const sumaAplicado = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
+                          const saldoAFavorMostrar = pend < 0 ? Math.max(0, Math.abs(pend) - sumaAplicado) : 0;
+                          return (
                           <span style={{ 
                             fontSize: '12px',
                             fontWeight: 'bold',
                             padding: '2px 8px',
                             borderRadius: '4px',
-                            backgroundColor: cuentaCorriente.totales.total_pendiente > 0 
+                            backgroundColor: pend > 0 
                               ? (theme === 'dark' ? '#4a1a1a' : '#ffe6e6')
-                              : cuentaCorriente.totales.total_pendiente < 0 
+                              : pend < 0 
                                 ? (theme === 'dark' ? '#1a3a4a' : '#e6f7ff')
                                 : (theme === 'dark' ? '#1a4a1a' : '#e6ffe6'),
-                            color: cuentaCorriente.totales.total_pendiente > 0 
+                            color: pend > 0 
                               ? '#dc3545' 
-                              : cuentaCorriente.totales.total_pendiente < 0 
+                              : pend < 0 
                                 ? '#17a2b8' 
                                 : '#28a745'
                           }}>
-                            {cuentaCorriente.totales.total_pendiente > 0 
-                              ? `💰 Adeuda: ${formatearMonedaConSimbolo(cuentaCorriente.totales.total_pendiente)}`
-                              : cuentaCorriente.totales.total_pendiente < 0
-                                ? `💚 Saldo a favor: ${formatearMonedaConSimbolo(Math.abs(cuentaCorriente.totales.total_pendiente))}`
+                            {pend > 0 
+                              ? `💰 Adeuda: ${formatearMonedaConSimbolo(pend)}`
+                              : pend < 0
+                                ? (saldoAFavorMostrar > 0 ? `💚 Saldo a favor: ${formatearMonedaConSimbolo(saldoAFavorMostrar)}` : '✅ Al día')
                                 : '✅ Al día'
                             }
                           </span>
-                        )}
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -1451,37 +1668,46 @@ function Clientes({ onNavigate }) {
                       }}>
                         <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>Total Pagado</div>
                         <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#28a745' }}>
-                          {formatearMonedaConSimbolo(cuentaCorriente.totales.total_pagado)}
+                          {formatearMonedaConSimbolo(cuentaCorriente.totales.total_pagado ?? 0)}
                         </div>
                       </div>
-                      <div style={{
-                        padding: '10px',
-                        backgroundColor: cuentaCorriente.totales.total_pendiente > 0
-                          ? (theme === 'dark' ? '#4a1e1e' : '#f5c2c5')
-                          : cuentaCorriente.totales.total_pendiente < 0
-                            ? (theme === 'dark' ? '#1e3a5f' : '#cfe2ff')
-                            : (theme === 'dark' ? '#1e4a3a' : '#a8e6cf'),
-                        borderRadius: '5px',
-                        color: theme === 'dark' ? '#e0e0e0' : 'inherit'
-                      }}>
-                        <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>
-                          {cuentaCorriente.totales.total_pendiente < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
-                        </div>
-                        <div style={{ 
-                          fontSize: '16px', 
-                          fontWeight: 'bold', 
-                          color: cuentaCorriente.totales.total_pendiente > 0 
-                            ? '#dc3545' 
-                            : cuentaCorriente.totales.total_pendiente < 0
-                              ? '#17a2b8'
-                              : '#28a745' 
-                        }}>
-                          {cuentaCorriente.totales.total_pendiente < 0
-                            ? formatearMonedaConSimbolo(Math.abs(cuentaCorriente.totales.total_pendiente))
-                            : formatearMonedaConSimbolo(cuentaCorriente.totales.total_pendiente)
-                          }
-                        </div>
-                      </div>
+                      {(() => {
+                        const pend = cuentaCorriente.totales.total_pendiente || 0;
+                        const sumaAplicado = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos || []);
+                        const saldoAFavorMostrar = pend < 0 ? Math.max(0, Math.abs(pend) - sumaAplicado) : Math.abs(pend);
+                        return (
+                          <div style={{
+                            padding: '10px',
+                            backgroundColor: pend > 0
+                              ? (theme === 'dark' ? '#4a1e1e' : '#f5c2c5')
+                              : pend < 0
+                                ? (theme === 'dark' ? '#1e3a5f' : '#cfe2ff')
+                                : (theme === 'dark' ? '#1e4a3a' : '#a8e6cf'),
+                            borderRadius: '5px',
+                            color: theme === 'dark' ? '#e0e0e0' : 'inherit'
+                          }}>
+                            <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>
+                              {pend < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
+                              {cuentaCorriente.saldoInicial && parseFloat(cuentaCorriente.saldoInicial.monto || 0) !== 0 && (
+                                <span style={{ marginLeft: '4px', fontSize: '10px', fontStyle: 'italic' }}>
+                                  (inc. saldo inicial)
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ 
+                              fontSize: '16px', 
+                              fontWeight: 'bold', 
+                              color: pend > 0 
+                                ? '#dc3545' 
+                                : pend < 0
+                                  ? '#17a2b8'
+                                  : '#28a745' 
+                            }}>
+                              {formatearMonedaConSimbolo(saldoAFavorMostrar)}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <div style={{
                         padding: '10px',
                         backgroundColor: theme === 'dark' ? '#4a3a1a' : '#fff3cd',

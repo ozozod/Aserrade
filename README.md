@@ -93,6 +93,18 @@ npm run build:electron
 
 El instalador se generará en la carpeta `dist/`.
 
+### Publicar nueva versión (actualizaciones automáticas)
+
+Para que los usuarios reciban la actualización al abrir la app (electron-updater + GitHub Releases):
+
+1. **Subir versión** en `package.json` (ej. `"version": "2.0.6"`).
+2. **Build:** `npm run build`
+3. **Publicar a GitHub:** `npm run publish:github`  
+   Requiere la variable de entorno `GH_TOKEN` con un Personal Access Token de GitHub (permiso `repo`).  
+   Esto genera el instalador, crea/actualiza el release (ej. v2.0.6) y sube el .exe y `latest.yml` para que el auto-update funcione.
+
+Guía detallada: ver `docs/GUIA_ACTUALIZACIONES.md`.
+
 ## Uso
 
 ### Iniciar la Aplicación

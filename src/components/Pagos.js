@@ -45,6 +45,7 @@ function Pagos() {
   const [adelantoAplicar, setAdelantoAplicar] = useState(null);
   const [distribucionAdelanto, setDistribucionAdelanto] = useState({});
   const [remitosParaAdelanto, setRemitosParaAdelanto] = useState([]);
+  const [detalleAplicarAdelanto, setDetalleAplicarAdelanto] = useState('');
   // Función helper para obtener fecha local en formato YYYY-MM-DD (sin conversión UTC)
   const obtenerFechaLocal = (fecha = null) => {
     const d = fecha ? new Date(fecha) : new Date();
@@ -1194,6 +1195,7 @@ function Pagos() {
       setAdelantoAplicar(adelanto);
       setRemitosParaAdelanto(remitosCliente);
       setDistribucionAdelanto({});
+      setDetalleAplicarAdelanto('');
       setShowAplicarAdelantoModal(true);
     } catch (error) {
       console.error('Error preparando aplicación de adelanto:', error);
@@ -1236,14 +1238,16 @@ function Pagos() {
       }));
 
       const pagoGrupoId = `G${Date.now()}${Math.random().toString(36).slice(2, 9)}`;
-      const observacionesConDetalle = `Adelanto aplicado | REMITOS_DETALLE:${JSON.stringify(remitosDetalle)} PAGO_GRUPO_ID:${pagoGrupoId}`;
+      const textoDetalle = (detalleAplicarAdelanto || '').trim();
+      const encabezado = textoDetalle ? `Adelanto aplicado - ${textoDetalle}` : 'Adelanto aplicado';
+      const observacionesConDetalle = `${encabezado} | REMITOS_DETALLE:${JSON.stringify(remitosDetalle)} PAGO_GRUPO_ID:${pagoGrupoId}`;
       
       const pagosOcultos = remitosConPago.map(({ remito, monto }) => ({
         remito_id: remito.id,
         cliente_id: adelantoAplicar.cliente_id,
         fecha: adelantoAplicar.fecha,
         monto: monto,
-        observaciones: `[OCULTO] Pago agrupado - Remito ${remito.numero || remito.id} - ${formatearMonedaConSimbolo(monto)} PAGO_GRUPO_ID:${pagoGrupoId}`,
+        observaciones: `[OCULTO] Pago agrupado - Remito ${remito.numero || remito.id} - ${formatearMonedaConSimbolo(monto)}${textoDetalle ? ' - ' + textoDetalle : ''} PAGO_GRUPO_ID:${pagoGrupoId}`,
         es_cheque: adelantoAplicar.es_cheque || false
       }));
 
@@ -1267,7 +1271,7 @@ function Pagos() {
           cliente_id: adelantoAplicar.cliente_id,
           fecha: adelantoAplicar.fecha,
           monto: montoResidual,
-          observaciones: `[ADELANTO] Residual - ${formatearMonedaConSimbolo(montoResidual)}`,
+          observaciones: `[ADELANTO] Residual - ${formatearMonedaConSimbolo(montoResidual)}${textoDetalle ? ' - ' + textoDetalle : ''}`,
           es_cheque: false
         });
       }
@@ -4017,6 +4021,28 @@ function Pagos() {
               <div style={{ fontSize: '12px', marginTop: '5px', opacity: 0.8 }}>
                 Fecha: {new Date(adelantoAplicar.fecha).toLocaleDateString('es-AR')}
               </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>
+                Detalle del pago (opcional)
+              </label>
+              <textarea
+                value={detalleAplicarAdelanto}
+                onChange={(e) => setDetalleAplicarAdelanto(e.target.value)}
+                rows={3}
+                placeholder="Ej: Adelanto correspondiente a trabajos de enero"
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                  color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                  border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                  borderRadius: '6px',
+                  resize: 'vertical',
+                  fontSize: '13px'
+                }}
+              />
             </div>
 
             <h4 style={{ color: theme === 'dark' ? '#e0e0e0' : 'inherit', marginBottom: '15px' }}>

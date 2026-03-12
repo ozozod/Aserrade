@@ -41,6 +41,8 @@ export const marcarPagoComoCheque = hostingerService.marcarPagoComoCheque;
 export const marcarChequeRebotado = hostingerService.marcarChequeRebotado;
 export const getCuentaCorriente = hostingerService.getCuentaCorriente;
 export const getResumenGeneral = hostingerService.getResumenGeneral;
+export const getSaldoInicialCliente = hostingerService.getSaldoInicialCliente;
+export const setSaldoInicialCliente = hostingerService.setSaldoInicialCliente;
 
 // Funciones de imágenes (ahora Hostinger - base64 en MySQL)
 export const uploadRemitoImage = hostingerService.uploadRemitoImage;

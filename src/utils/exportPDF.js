@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal } from './formatoMoneda';
+import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal, sumarPagosSaldoAFavorAplicado } from './formatoMoneda';
 
 // Función auxiliar para cargar imagen desde URL
 const loadImageFromUrl = (url) => {
@@ -34,6 +34,13 @@ const limpiarConceptoPago = (observaciones) => {
   if (concepto.includes('[ADELANTO]')) {
     concepto = concepto.replace('[ADELANTO]', '').trim();
     if (concepto.length < 2) return 'ADELANTO';
+  }
+  
+  // En exportados mostrar solo el detalle del usuario, no "Saldo a favor aplicado - ..."
+  if (concepto.toLowerCase().includes('saldo a favor aplicado')) {
+    const idx = concepto.toLowerCase().indexOf('saldo a favor aplicado');
+    const despues = concepto.slice(idx + 'saldo a favor aplicado'.length).replace(/^\s*[-–]\s*/, '').trim();
+    concepto = despues || 'Pago a cuenta';
   }
   
   // Si dice "Pago completo" o "Pago agrupado" o "Pago parcial", simplificar
@@ -162,7 +169,8 @@ const construirMovimientos = (remitos, pagos) => {
             id: pago.id,
             es_cheque: pago.es_cheque === 1 || pago.es_cheque === true || pago.es_cheque === '1',
             cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1',
-            remitosDetalle: remitosDetalle // Guardar detalles para referencia
+            remitosDetalle: remitosDetalle,
+            observaciones: obs
           };
           return;
         }
@@ -182,7 +190,8 @@ const construirMovimientos = (remitos, pagos) => {
       montoTotal: parseFloat(pago.monto || 0),
       id: pago.id,
       es_cheque: pago.es_cheque === 1 || pago.es_cheque === true || pago.es_cheque === '1',
-      cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1'
+      cheque_rebotado: pago.cheque_rebotado === 1 || pago.cheque_rebotado === true || pago.cheque_rebotado === '1',
+      observaciones: obs
     };
   });
   
@@ -217,7 +226,8 @@ const construirMovimientos = (remitos, pagos) => {
         id: pagoAgrupado.id,
         orden: 0,
         es_cheque: pagoAgrupado.es_cheque,
-        cheque_rebotado: pagoAgrupado.cheque_rebotado
+        cheque_rebotado: pagoAgrupado.cheque_rebotado,
+        observaciones: pagoAgrupado.observaciones || ''
       });
     }
   });
@@ -238,26 +248,29 @@ const construirMovimientos = (remitos, pagos) => {
   return movimientos;
 };
 
-// Calcula saldos usando historial completo y devuelve mapa clave->saldo
-const calcularSaldosDesdeHistorial = (movimientosHistorial, saldoPendienteResumen) => {
+// Calcula saldos usando historial completo y devuelve mapa clave->saldo (DEBE = deuda pendiente después de cada movimiento)
+const calcularSaldosDesdeHistorial = (movimientosHistorial, saldoPendienteResumen, montoSaldoInicial = 0) => {
   let saldoAcumulado = 0;
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {
     const chequeRebotado = mov.cheque_rebotado === 1 || mov.cheque_rebotado === true || mov.cheque_rebotado === '1';
+
     if (!chequeRebotado) {
       saldoAcumulado += mov.total - mov.pago;
+      saldoPorClave.set(mov.clave, saldoAcumulado);
+    } else {
+      saldoPorClave.set(mov.clave, saldoAcumulado);
     }
-    saldoPorClave.set(mov.clave, saldoAcumulado);
   });
   
-  // Ajustar saldo final si difiere del resumen (y el último no es cheque rebotado)
-  const diferencia = Math.abs(saldoAcumulado - (saldoPendienteResumen || 0));
-  if (diferencia > 1 && movimientosHistorial.length > 0) {
+  // Ajustar última fila para que DEBE cierre con el resumen (Saldo Pendiente)
+  if (movimientosHistorial.length > 0) {
     const ultimo = movimientosHistorial[movimientosHistorial.length - 1];
     const ultimoEsChequeRebotado = ultimo.cheque_rebotado === 1 || ultimo.cheque_rebotado === true || ultimo.cheque_rebotado === '1';
     if (!ultimoEsChequeRebotado) {
-      saldoPorClave.set(ultimo.clave, saldoPendienteResumen || saldoAcumulado);
+      const valorCierre = saldoPendienteResumen ?? saldoAcumulado;
+      saldoPorClave.set(ultimo.clave, valorCierre);
     }
   }
   
@@ -349,7 +362,12 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
   doc.setTextColor(34, 45, 65);
   doc.text('CUENTA CORRIENTE', 15, yPosition);
   yPosition += 5;
-  
+
+  // Saldo inicial
+  const saldoInicial = cuentaCorriente.saldoInicial;
+  const montoSaldoInicial = saldoInicial ? parseFloat(saldoInicial.monto || 0) : 0;
+  const esAFavor = montoSaldoInicial > 0;
+
   // Construir movimientos para cálculo de saldos (historial completo)
   const movimientosHistorial = construirMovimientos(
     cuentaCorriente.remitosHistorico || cuentaCorriente.remitos || [],
@@ -362,16 +380,38 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     cuentaCorriente.pagos || []
   );
   
-  // Calcular saldos con historial completo y mapear a los filtrados
+  // Calcular saldos: usar total_pendiente del backend (ya con crédito restante) para que la tabla cierre con el resumen
+  const saldoPendienteResumen = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0) - montoSaldoInicial);
   const saldoPorClave = calcularSaldosDesdeHistorial(
     movimientosHistorial,
-    cuentaCorriente.totales?.total_pendiente || 0
+    saldoPendienteResumen,
+    montoSaldoInicial
   );
   
   const movimientosConSaldo = movimientosFiltrados.map(mov => ({
     ...mov,
     saldo: saldoPorClave.has(mov.clave) ? saldoPorClave.get(mov.clave) : mov.total - mov.pago
   }));
+
+  // Si hay saldo inicial, agregarlo como primera fila de la tabla
+  let filasSaldoInicial = [];
+  if (montoSaldoInicial !== 0) {
+    const fechaRef = saldoInicial.fecha_referencia
+      ? new Date(saldoInicial.fecha_referencia).toLocaleDateString('es-AR')
+      : '';
+    const textoBase = saldoInicial.descripcion || 'Saldo inicial';
+    filasSaldoInicial = [[
+      'S.I.',
+      fechaRef,
+      '',
+      textoBase,
+      '',
+      '',
+      '',
+      esAFavor ? formatearMonedaConSimbolo(Math.abs(montoSaldoInicial)) : '',   // PAGA A CTA
+      !esAFavor ? formatearMonedaConSimbolo(Math.abs(montoSaldoInicial)) : ''   // DEBE
+    ]];
+  }
   
   // Preparar datos para la tabla (guardamos info extra para estilos)
   const movimientosInfo = movimientosConSaldo.map(mov => ({
@@ -403,20 +443,23 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     [245, 245, 250]  // Gris muy claro
   ];
   
-  const cuentaCorrienteData = movimientosConSaldo.map(mov => {
-    const esPago = mov.tipo === 'pago';
-    return [
-      mov.numero,
-      mov.fechaStr,
-      mov.codigo || '',
-      mov.concepto,
-      mov.cantidad,
-      mov.precioUnitario,
-      mov.total > 0 ? formatearMonedaConSimbolo(mov.total) : '',
-      esPago ? formatearMonedaConSimbolo(mov.pago) : '',
-      formatearMonedaConSimbolo(mov.saldo)
-    ];
-  });
+  const cuentaCorrienteData = [
+    ...filasSaldoInicial,
+    ...movimientosConSaldo.map(mov => {
+      const esPago = mov.tipo === 'pago';
+      return [
+        mov.numero,
+        mov.fechaStr,
+        mov.codigo || '',
+        mov.concepto,
+        mov.cantidad,
+        mov.precioUnitario,
+        mov.total > 0 ? formatearMonedaConSimbolo(mov.total) : '',
+        esPago ? formatearMonedaConSimbolo(mov.pago) : '',
+        formatearMonedaConSimbolo(mov.saldo)
+      ];
+    })
+  ];
   
   // Tabla de cuenta corriente estilo Excel
   doc.autoTable({
@@ -458,8 +501,26 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     didParseCell: function(data) {
       if (data.section === 'body') {
         const rowData = cuentaCorrienteData[data.row.index];
-        const movInfo = movimientosInfo[data.row.index];
-        const mov = movimientosConSaldo[data.row.index];
+        // La primera fila puede ser saldo inicial
+        const offsetSaldo = filasSaldoInicial.length;
+        const esSaldoInicialRow = data.row.index < offsetSaldo;
+
+        // Colorear fila de saldo inicial (azul si a favor, rojo si en contra)
+        if (esSaldoInicialRow) {
+          if (esAFavor) {
+            data.cell.styles.fillColor = [204, 229, 255]; // azul suave
+            data.cell.styles.textColor = [0, 70, 160];
+            data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.fillColor = [255, 205, 210]; // rojo suave
+            data.cell.styles.textColor = [180, 0, 0];
+            data.cell.styles.fontStyle = 'bold';
+          }
+          return;
+        }
+
+        const movInfo = movimientosInfo[data.row.index - offsetSaldo];
+        const mov = movimientosConSaldo[data.row.index - offsetSaldo];
         
         // Colorear columna DEBE según si es positivo (a favor) o negativo (deuda)
         if (data.column.index === 8 && mov) { // Columna DEBE
@@ -574,17 +635,23 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
   doc.text(formatearMonedaConSimbolo(cuentaCorriente.totales.total_remitos || 0), 195, yResumen, { align: 'right' });
   yResumen += 7;
   
-  // Total Pagado
+  // Total Pagado: solo pagos reales (no incluir saldo inicial)
+  const totalPagadoMostrar = cuentaCorriente.totales.total_pagado || 0;
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
   doc.text('Total Pagado:', 15, yResumen);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(40, 167, 69);
-  doc.text(formatearMonedaConSimbolo(cuentaCorriente.totales.total_pagado || 0), 195, yResumen, { align: 'right' });
+  doc.text(formatearMonedaConSimbolo(totalPagadoMostrar), 195, yResumen, { align: 'right' });
   yResumen += 7;
-  
-  // Saldo - Mostrar "Pendiente" o "A Favor" según corresponda
-  const saldoPendiente = cuentaCorriente.totales.total_pendiente || 0;
+
+  // Saldo pendiente: Total Remitos - Total Pagado (efectivo) - saldo inicial
+  const saldoPendiente = cuentaCorriente.totales.total_pendiente ?? ((cuentaCorriente.totales.total_remitos || 0) - (cuentaCorriente.totales.total_pagado || 0) - montoSaldoInicial);
+  const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
+  // Si total_pendiente es negativo, saldo a favor = saldo neto (no restar otra vez lo aplicado)
+  const saldoAFavorMostrar = saldoPendiente < 0
+    ? Math.abs(saldoPendiente)
+    : (montoSaldoInicial > 0 ? Math.max(0, montoSaldoInicial - sumaAplicadoSaldoFavor) : 0);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
   
@@ -594,12 +661,12 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(220, 53, 69); // Rojo
     doc.text(formatearMonedaConSimbolo(saldoPendiente), 195, yResumen, { align: 'right' });
-  } else if (saldoPendiente < 0) {
-    // Cliente tiene saldo a favor (pagó de más)
+  } else if (saldoAFavorMostrar > 0) {
+    // Cliente tiene saldo a favor (por total_pendiente negativo o por saldo inicial)
     doc.text('Saldo a Favor:', 15, yResumen);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(40, 167, 69); // Verde
-    doc.text(formatearMonedaConSimbolo(Math.abs(saldoPendiente)), 195, yResumen, { align: 'right' });
+    doc.text(formatearMonedaConSimbolo(saldoAFavorMostrar), 195, yResumen, { align: 'right' });
   } else {
     // Está al día
     doc.text('Saldo:', 15, yResumen);

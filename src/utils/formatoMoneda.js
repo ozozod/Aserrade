@@ -160,3 +160,21 @@ export const formatearCantidadDecimal = (valor) => {
   }
 };
 
+/**
+ * Suma los montos de pagos que tienen "Saldo a favor aplicado" en observaciones.
+ * Se usa para descontar del saldo a favor mostrado el crédito ya aplicado a remitos.
+ * @param {Array} pagos - Lista de pagos (cuentaCorriente.pagos)
+ * @returns {number}
+ */
+const TEXTO_SALDO_FAVOR_APLICADO = 'saldo a favor aplicado';
+export const sumarPagosSaldoAFavorAplicado = (pagos) => {
+  if (!pagos || !Array.isArray(pagos)) return 0;
+  return pagos.reduce((sum, p) => {
+    const obs = (p.observaciones || '').toLowerCase();
+    if (obs.includes(TEXTO_SALDO_FAVOR_APLICADO)) {
+      return sum + (parseFloat(p.monto) || 0);
+    }
+    return sum;
+  }, 0);
+};
+

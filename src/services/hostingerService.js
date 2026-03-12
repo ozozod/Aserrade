@@ -36,20 +36,18 @@ export const getCliente = async (id) => {
   }
 };
 
-export const createCliente = async (cliente) => {
+export const createCliente = async (cliente, saldoInicialData = null) => {
   if (isElectron()) {
-    return await window.electronAPI.mysql.createCliente(cliente);
+    return await window.electronAPI.mysql.createCliente(cliente, saldoInicialData);
   } else {
-    // En navegador, no hacer nada (no hay conexión a MySQL)
     throw new Error('MySQL solo disponible en Electron');
   }
 };
 
-export const updateCliente = async (id, cliente) => {
+export const updateCliente = async (id, cliente, saldoInicialData = null) => {
   if (isElectron()) {
-    return await window.electronAPI.mysql.updateCliente(id, cliente);
+    return await window.electronAPI.mysql.updateCliente(id, cliente, saldoInicialData);
   } else {
-    // En navegador, no hacer nada (no hay conexión a MySQL)
     throw new Error('MySQL solo disponible en Electron');
   }
 };
@@ -402,6 +400,22 @@ export const registrarAuditoria = async (data) => {
   return await window.electronAPI.invoke('mysql:registrarAuditoria', data);
 };
 
+// ============ SALDOS INICIALES ============
+export const getSaldoInicialCliente = async (clienteId) => {
+  if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
+  return await window.electronAPI.mysql.getSaldoInicialCliente(clienteId);
+};
+
+export const setSaldoInicialCliente = async ({ cliente_id, fecha_referencia, monto, descripcion }) => {
+  if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
+  return await window.electronAPI.mysql.setSaldoInicialCliente({
+    cliente_id,
+    fecha_referencia,
+    monto,
+    descripcion
+  });
+};
+
 // Export default con todas las funciones
 const hostingerService = {
   testConnection,
@@ -444,7 +458,9 @@ const hostingerService = {
   toggleUsuario,
   cambiarPassword,
   getAuditoria,
-  registrarAuditoria
+  registrarAuditoria,
+  getSaldoInicialCliente,
+  setSaldoInicialCliente
 };
 
 export default hostingerService;

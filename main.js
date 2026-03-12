@@ -533,11 +533,11 @@ ipcMain.handle('mysql:getClientes', async () => {
 ipcMain.handle('mysql:getCliente', async (event, id) => {
   return await mysqlService.getCliente(id);
 });
-ipcMain.handle('mysql:createCliente', async (event, cliente) => {
-  return await mysqlService.createCliente(cliente);
+ipcMain.handle('mysql:createCliente', async (event, cliente, saldoInicialData) => {
+  return await mysqlService.createCliente(cliente, saldoInicialData || null);
 });
-ipcMain.handle('mysql:updateCliente', async (event, id, cliente) => {
-  return await mysqlService.updateCliente(id, cliente);
+ipcMain.handle('mysql:updateCliente', async (event, id, cliente, saldoInicialData) => {
+  return await mysqlService.updateCliente(id, cliente, saldoInicialData || null);
 });
 ipcMain.handle('mysql:deleteCliente', async (event, id) => {
   return await mysqlService.deleteCliente(id);
@@ -615,6 +615,14 @@ ipcMain.handle('mysql:getResumenGeneral', async (event, fechaDesde, fechaHasta) 
   return await mysqlService.getResumenGeneral(fechaDesde, fechaHasta);
 });
 
+// SALDOS INICIALES
+ipcMain.handle('mysql:getSaldoInicialCliente', async (event, clienteId) => {
+  return await mysqlService.getSaldoInicialCliente(clienteId);
+});
+ipcMain.handle('mysql:setSaldoInicialCliente', async (event, data) => {
+  return await mysqlService.setSaldoInicialCliente(data);
+});
+
 // ============ USUARIOS Y AUDITORÍA ============
 // Login
 ipcMain.handle('mysql:login', async (event, { username, password }) => {
@@ -660,6 +668,10 @@ ipcMain.handle('mysql:registrarAuditoria', async (event, data) => {
 
 ipcMain.handle('mysql:deleteAuditoria', async (event, auditoriaId) => {
   return await mysqlService.deleteAuditoria(auditoriaId);
+});
+
+ipcMain.handle('mysql:deleteAuditoriaBulk', async (event, ids) => {
+  return await mysqlService.deleteAuditoriaBulk(ids);
 });
 
 // ===========================================

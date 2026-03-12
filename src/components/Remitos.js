@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import * as supabaseService from '../services/databaseService';
-import { formatearMonedaConSimbolo, formatearMoneda, formatearCantidad, formatearCantidadDecimal, formatearNumeroVisual, limpiarFormatoNumero } from '../utils/formatoMoneda';
+import { formatearMonedaConSimbolo, formatearMoneda, formatearCantidad, formatearCantidadDecimal, formatearNumeroVisual, limpiarFormatoNumero, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
 import { alertNoBloqueante, confirmNoBloqueante } from '../utils/notificaciones';
@@ -130,6 +130,14 @@ function Remitos() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
   const formRef = React.useRef(null);
+
+  // Estado para modal "Aplicar saldo a favor" tras crear remito
+  const [showAplicarSaldoFavorModal, setShowAplicarSaldoFavorModal] = useState(false);
+  const [remitoParaSaldoFavor, setRemitoParaSaldoFavor] = useState(null); // { id, cliente_id, precio_total, fecha }
+  const [saldoAFavorDisponible, setSaldoAFavorDisponible] = useState(0);
+  const [montoAplicarSaldoFavor, setMontoAplicarSaldoFavor] = useState('');
+  const [detalleAplicarSaldoFavor, setDetalleAplicarSaldoFavor] = useState('');
+  const [aplicandoSaldoFavor, setAplicandoSaldoFavor] = useState(false);
   
   // Estados para búsqueda de artículo en el modal
   const [busquedaArticulo, setBusquedaArticulo] = useState('');
@@ -722,7 +730,8 @@ function Remitos() {
         await supabaseService.updateRemito(editingRemito.id, datosEnviar);
       } else {
         // Solo crear si no lo creamos arriba
-        await supabaseService.createRemito(datosEnviar);
+        const remitoCreado = await supabaseService.createRemito(datosEnviar);
+        remitoId = remitoCreado?.id ?? null;
       }
       
       // Invalidar caché y recargar datos relacionados desde la base
@@ -737,13 +746,98 @@ function Remitos() {
         loadArticulosCache(true) // Recargar artículos por si hay cambios
       ]);
       const estabaEditando = editingRemito !== null;
+      const clienteIdForSaldo = formData.cliente_id ? parseInt(formData.cliente_id, 10) : null;
+      const precioTotalNuevoRemito = precioTotalRemito;
+      const fechaRemito = formData.fecha ? (typeof formData.fecha === 'string' && formData.fecha.match(/^\d{4}-\d{2}-\d{2}/) ? formData.fecha : null) : null;
       resetForm();
       alertNoBloqueante(estabaEditando ? 'Remito actualizado correctamente' : 'Remito creado correctamente', 'success');
+
+      // Si fue creación (no edición) y hay cliente, verificar si tiene saldo a favor REAL (crédito restante) para ofrecer aplicarlo al remito
+      if (!estabaEditando && remitoId && clienteIdForSaldo) {
+        try {
+          let cuentaCorriente = await supabaseService.getCuentaCorriente(clienteIdForSaldo);
+          if (!cuentaCorriente?.saldoInicial) {
+            try {
+              const si = await supabaseService.getSaldoInicialCliente(clienteIdForSaldo);
+              if (si) cuentaCorriente = { ...cuentaCorriente, saldoInicial: si };
+            } catch (e) { /* ignorar */ }
+          }
+          const montoSaldoInicial = (cuentaCorriente?.saldoInicial && parseFloat(cuentaCorriente.saldoInicial.monto || 0)) || 0;
+          const sumaYaAplicado = sumarPagosSaldoAFavorAplicado(cuentaCorriente?.pagos || []);
+          const creditoRestante = Math.max(0, montoSaldoInicial - sumaYaAplicado);
+          const precioTotal = Number(precioTotalNuevoRemito) || 0;
+          const disponible = creditoRestante > 0 ? Math.min(creditoRestante, precioTotal) : 0;
+          if (disponible > 0) {
+            setRemitoParaSaldoFavor({
+              id: remitoId,
+              cliente_id: clienteIdForSaldo,
+              precio_total: precioTotal,
+              fecha: fechaRemito || obtenerFechaLocal()
+            });
+            setSaldoAFavorDisponible(disponible);
+            setMontoAplicarSaldoFavor('');
+            setDetalleAplicarSaldoFavor('');
+            setShowAplicarSaldoFavorModal(true);
+          }
+        } catch (err) {
+          console.warn('Error al verificar saldo a favor para modal:', err);
+        }
+      }
     } catch (error) {
       console.error('Error guardando remito:', error);
       alertNoBloqueante('Error al guardar remito: ' + (error.message || 'Error desconocido'), 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmarAplicarSaldoFavor = async () => {
+    if (!remitoParaSaldoFavor) return;
+    const montoNum = montoAplicarSaldoFavor === '' ? 0 : (parseFloat(limpiarFormatoNumero(String(montoAplicarSaldoFavor))) || 0);
+    const detalleTrim = (detalleAplicarSaldoFavor || '').trim();
+    if (detalleTrim === '') {
+      alertNoBloqueante('El detalle es obligatorio al aplicar saldo a favor.', 'warning');
+      return;
+    }
+    if (montoNum <= 0) {
+      alertNoBloqueante('El monto a aplicar debe ser mayor a 0.', 'warning');
+      return;
+    }
+    if (montoNum > saldoAFavorDisponible) {
+      alertNoBloqueante(`El monto no puede superar el saldo disponible (${formatearMonedaConSimbolo(saldoAFavorDisponible)}).`, 'warning');
+      return;
+    }
+    setAplicandoSaldoFavor(true);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    try {
+      const fechaPago = remitoParaSaldoFavor.fecha && remitoParaSaldoFavor.fecha.match(/^\d{4}-\d{2}-\d{2}/)
+        ? remitoParaSaldoFavor.fecha
+        : obtenerFechaLocal();
+      await supabaseService.createPago({
+        remito_id: remitoParaSaldoFavor.id,
+        cliente_id: remitoParaSaldoFavor.cliente_id,
+        fecha: fechaPago,
+        monto: montoNum,
+        observaciones: `Saldo a favor aplicado - ${detalleTrim}`,
+        es_cheque: false
+      });
+      invalidateCache('pagos');
+      invalidateCache('remitos');
+      invalidateCache('resumen');
+      refreshRelated('remitos');
+      await loadRemitosCache(true);
+      await loadClientesCache(true);
+      setShowAplicarSaldoFavorModal(false);
+      setRemitoParaSaldoFavor(null);
+      setSaldoAFavorDisponible(0);
+      setMontoAplicarSaldoFavor('');
+      setDetalleAplicarSaldoFavor('');
+      alertNoBloqueante('Saldo a favor aplicado al remito correctamente.', 'success');
+    } catch (error) {
+      console.error('Error aplicando saldo a favor:', error);
+      alertNoBloqueante('Error al aplicar saldo a favor: ' + (error.message || 'Error desconocido'), 'error');
+    } finally {
+      setAplicandoSaldoFavor(false);
     }
   };
 
@@ -3381,6 +3475,127 @@ function Remitos() {
                 onClick={handleAgregarArticuloModal}
               >
                 ✅ Agregar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Aplicar saldo a favor al remito recién creado */}
+      {showAplicarSaldoFavorModal && remitoParaSaldoFavor && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAplicarSaldoFavorModal(false);
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: theme === 'dark' ? '#2d2d2d' : 'white',
+              padding: '25px',
+              borderRadius: '12px',
+              width: '90%',
+              maxWidth: '500px',
+              border: `2px solid ${theme === 'dark' ? '#5dade2' : '#17a2b8'}`
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginBottom: '16px', color: theme === 'dark' ? '#e0e0e0' : 'inherit' }}>
+              Aplicar saldo a favor a este remito
+            </h3>
+            <div style={{
+              padding: '12px',
+              backgroundColor: theme === 'dark' ? '#1a3a4a' : '#d1ecf1',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              border: '1px solid #17a2b8'
+            }}>
+              <p style={{ margin: 0, fontSize: '14px' }}>
+                Este cliente tiene saldo a favor (por saldo inicial y/o adelantos). Podés aplicar hasta <strong>{formatearMonedaConSimbolo(saldoAFavorDisponible)}</strong> al remito recién creado.
+              </p>
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>Monto a aplicar *</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatearNumeroVisual(montoAplicarSaldoFavor)}
+                  onChange={(e) => setMontoAplicarSaldoFavor(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  placeholder={formatearMonedaConSimbolo(saldoAFavorDisponible)}
+                  style={{
+                    flex: 1,
+                    padding: '8px',
+                    backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                    color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                    border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                    borderRadius: '6px',
+                    textAlign: 'right'
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-info"
+                  onClick={() => setMontoAplicarSaldoFavor(String(saldoAFavorDisponible))}
+                >
+                  Max
+                </button>
+              </div>
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>Detalle del pago (obligatorio) *</label>
+              <textarea
+                value={detalleAplicarSaldoFavor}
+                onChange={(e) => setDetalleAplicarSaldoFavor(e.target.value)}
+                rows={3}
+                placeholder="Ej: Aplicación de saldo a favor por remito recién creado"
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: theme === 'dark' ? '#404040' : '#fff',
+                  color: theme === 'dark' ? '#e0e0e0' : 'inherit',
+                  border: `1px solid ${theme === 'dark' ? '#555' : '#ddd'}`,
+                  borderRadius: '6px',
+                  resize: 'vertical',
+                  fontSize: '13px'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowAplicarSaldoFavorModal(false);
+                  setRemitoParaSaldoFavor(null);
+                  setMontoAplicarSaldoFavor('');
+                  setDetalleAplicarSaldoFavor('');
+                  setAplicandoSaldoFavor(false);
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-info"
+                onClick={handleConfirmarAplicarSaldoFavor}
+                disabled={
+                  aplicandoSaldoFavor ||
+                  (montoAplicarSaldoFavor === '' || (parseFloat(limpiarFormatoNumero(String(montoAplicarSaldoFavor))) || 0) <= 0) ||
+                  (detalleAplicarSaldoFavor || '').trim() === ''
+                }
+                style={aplicandoSaldoFavor ? { cursor: 'not-allowed', opacity: 0.85 } : undefined}
+              >
+                {aplicandoSaldoFavor ? 'Cargando...' : 'Aplicar saldo a favor'}
               </button>
             </div>
           </div>

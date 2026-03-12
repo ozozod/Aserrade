@@ -1199,13 +1199,30 @@ export const getCuentaCorriente = async (clienteId) => {
     totalPagado += montoPagado;
   });
   
-  // Saldo pendiente = Total Facturado - Total Pagado (simple y correcto)
-  const totalPendiente = totalRemitos - totalPagado;
+  // Saldo inicial del cliente (si existe tabla saldos_iniciales)
+  let saldoInicial = null;
+  try {
+    const { data: rowsSaldo, error: errSaldo } = await supabase
+      .from('saldos_iniciales')
+      .select('id, cliente_id, fecha_referencia, monto, descripcion')
+      .eq('cliente_id', clienteId)
+      .order('fecha_referencia', { ascending: false })
+      .limit(1);
+    if (!errSaldo && rowsSaldo && rowsSaldo.length > 0) {
+      saldoInicial = rowsSaldo[0];
+    }
+  } catch (e) {
+    // Tabla puede no existir
+  }
+  const montoSI = saldoInicial ? parseFloat(saldoInicial.monto || 0) : 0;
+  // Saldo pendiente: facturado - pagado - saldo inicial (negativo = saldo a favor)
+  const totalPendiente = totalRemitos - totalPagado - montoSI;
   
   return {
     cliente_id: clienteId,
     remitos,
     pagos: pagosCliente, // Incluir historial de pagos con fechas reales
+    saldoInicial,
     totales: {
       total_remitos: totalRemitos,
       total_pagado: totalPagado,
