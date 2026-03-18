@@ -17,6 +17,14 @@ Este archivo documenta todos los cambios, parches y mejoras aplicadas a la aplic
 
 ---
 
+## [Versión 2.0.7] - 2026-03-18
+
+### 🐛 Correcciones de Bugs
+- **Cuenta corriente con saldo inicial**: Corregido el cálculo de saldo pendiente cuando el saldo inicial es deuda (negativo) o crédito (positivo), para que cierre igual en pantalla, PDF y Excel.
+- **PDF**: El saldo inicial ahora se muestra siempre en la columna **DEBE**, con color según sea deuda o saldo a favor, y se reemplazó el fondo azul.
+
+---
+
 ## [Versión 2.0.4] - 2026-02-06
 
 ### 🐛 Correcciones de Bugs
