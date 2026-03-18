@@ -243,7 +243,11 @@ const construirMovimientosExcel = (remitos, pagos) => {
 
 // Calcula saldos con historial completo y devuelve mapa clave->saldo (DEBE = deuda pendiente después de cada movimiento)
 const calcularSaldosDesdeHistorialExcel = (movimientosHistorial, saldoResumen, montoSaldoInicial = 0) => {
-  let saldoAcumulado = 0;
+  // saldoAcumulado representa deuda neta:
+  // - positivo => el cliente debe
+  // - negativo => saldo a favor
+  // Convención: saldo inicial > 0 (a favor) arranca negativo; saldo inicial < 0 (deuda) arranca positivo
+  let saldoAcumulado = -(parseFloat(montoSaldoInicial || 0) || 0);
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {

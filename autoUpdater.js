@@ -27,6 +27,8 @@ class AppUpdater {
     // Configuración de actualizaciones - AUTOMÁTICO AL INICIAR
     autoUpdater.autoDownload = true; // Descargar automáticamente
     autoUpdater.autoInstallOnAppQuit = true; // Instalar al cerrar
+    // Incluir pre-releases para que detecte actualizaciones aunque el release esté marcado "Pre-release" en GitHub
+    autoUpdater.allowPrerelease = true;
 
     // Evento: Verificando actualizaciones
     autoUpdater.on('checking-for-update', () => {
@@ -51,6 +53,7 @@ class AppUpdater {
     // Evento: Error al actualizar (ej. no hay releases, sin red)
     autoUpdater.on('error', (err) => {
       log.warn('⚠️ Actualizador:', err.message, err.code || '');
+      log.info('Detalle actualizador (para diagnóstico):', JSON.stringify({ message: err.message, code: err.code, stack: err.stack }));
       // Enviar como "sin actualización" para no asustar al usuario
       this.sendStatusToWindow('update-not-available', { version: 'current', skipped: true });
     });
@@ -117,6 +120,7 @@ class AppUpdater {
         .catch(err => {
           clearTimeout(timeout);
           log.warn('⚠️ No se pudo verificar actualizaciones (sin conexión o sin releases):', err.message || err);
+          log.info('Detalle (para diagnóstico):', err.stack || err);
           // Tratar como "sin actualizaciones" para que la UI no muestre error
           this.sendStatusToWindow('update-not-available', { version: 'current', skipped: true });
           resolve(null);

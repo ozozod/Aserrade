@@ -214,20 +214,23 @@ Windows: C:\Users\ozozo\AppData\Roaming\aserradero\logs\main.log
 ### ❌ "No se detecta actualización"
 
 **Causas:**
-- GitHub Release no tiene `latest.yml`
-- Tag mal formateado (debe ser `v2.0.2`, con "v")
-- Repository URL incorrecta en package.json
-- Versión en package.json es igual o mayor que Release
+- GitHub Release no tiene `latest.yml` o el `.exe` en Assets
+- Tag mal formateado: debe ser **exactamente** `v2.0.6` (con "v" delante)
+- El release está marcado como **Pre-release** en GitHub: la API "latest" suele ignorarlo. La app ahora tiene `allowPrerelease: true` para que también detecte pre-releases
+- Repository URL incorrecta en package.json (owner/repo deben coincidir: ozozod/Aserrade)
+- Versión instalada es igual o mayor que la del release
 
-**Solución:**
-```bash
-# Verificar configuración
-cat package.json | grep -A 5 "repository"
-cat package.json | grep "version"
+**Qué revisar en GitHub:**
+1. https://github.com/ozozod/Aserrade/releases
+2. El release debe tener **tag** `v2.0.6` (no "2.0.6" sin la v)
+3. En Assets: `Aserradero.App-2.0.6-Setup.exe` y `latest.yml`
+4. Si no querés usar Pre-release, desmarcá "Pre-release" y publicá de nuevo
 
-# Ver logs
-Get-Content "$env:APPDATA\aserradero\logs\main.log" -Tail 50
+**Ver el error real en logs:**
 ```
+Windows: %APPDATA%\Aserradero App\logs\main.log
+```
+Buscar líneas como "Actualizador:" o "Detalle actualizador" para ver el motivo.
 
 ### ❌ "Error al descargar actualización"
 

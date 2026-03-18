@@ -5,6 +5,7 @@ import { exportCuentaCorrienteExcel, exportResumenGeneralExcel } from '../utils/
 import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
+import { calcularTotalesCuentaCorriente } from '../utils/cuentaCorrienteCalculos';
 
 function Reportes({ clienteIdFromClientes }) {
   const { theme } = useTheme();
@@ -195,18 +196,19 @@ function Reportes({ clienteIdFromClientes }) {
         } catch (e) { /* ignorar */ }
       }
       const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
-      const sumaSAF = sumarPagosSaldoAFavorAplicado(cuentaCorrienteData.pagos || []);
-      const creditoRestante = Math.max(0, montoSI - sumaSAF);
       
       // Cargar artículos del cliente
       const articulos = await supabaseService.getArticulos();
       const articulosDelCliente = articulos.filter(a => a.cliente_id === cliente.id);
       
-      // Totales: total_pendiente = remitos - pagado - crédito restante (no saldo inicial completo)
-      const totalesGenerales = {
-        ...(cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 }),
-        total_pendiente: (cuentaCorrienteData.totales?.total_remitos ?? 0) - (cuentaCorrienteData.totales?.total_pagado ?? 0) - creditoRestante
-      };
+      // Totales: usar regla única (saldo inicial con signo)
+      const totalesBase = cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
+      const totalesGenerales = calcularTotalesCuentaCorriente({
+        totalRemitos: totalesBase.total_remitos ?? 0,
+        totalPagado: totalesBase.total_pagado ?? 0,
+        saldoInicialMonto: montoSI,
+        pagos: cuentaCorrienteData.pagos || []
+      });
       
       // Filtrar por fechas si se especificaron
       let cuentaFiltrada = { ...cuentaCorrienteData };
@@ -703,18 +705,19 @@ function Reportes({ clienteIdFromClientes }) {
                       } catch (e) { /* ignorar */ }
                     }
                     const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
-                    const sumaSAF = sumarPagosSaldoAFavorAplicado(cuentaCorrienteData.pagos || []);
-                    const creditoRestante = Math.max(0, montoSI - sumaSAF);
                     
                     // Cargar artículos del cliente
                     const articulos = await supabaseService.getArticulos();
                     const articulosDelCliente = articulos.filter(a => a.cliente_id === cliente.id);
                     
-                    // Totales: total_pendiente = remitos - pagado - crédito restante
-                    const totalesGenerales = {
-                      ...(cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 }),
-                      total_pendiente: (cuentaCorrienteData.totales?.total_remitos ?? 0) - (cuentaCorrienteData.totales?.total_pagado ?? 0) - creditoRestante
-                    };
+                    // Totales: usar regla única (saldo inicial con signo)
+                    const totalesBase = cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
+                    const totalesGenerales = calcularTotalesCuentaCorriente({
+                      totalRemitos: totalesBase.total_remitos ?? 0,
+                      totalPagado: totalesBase.total_pagado ?? 0,
+                      saldoInicialMonto: montoSI,
+                      pagos: cuentaCorrienteData.pagos || []
+                    });
                     
                     // Preparar datos sin filtros de fecha (exportar todo)
                     const cuentaFiltrada = { 

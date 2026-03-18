@@ -2046,7 +2046,7 @@ const getCuentaCorriente = async (clienteId) => {
       `SELECT id, cliente_id, fecha_referencia, monto, descripcion 
        FROM saldos_iniciales 
        WHERE cliente_id = ? 
-       ORDER BY fecha_referencia LIMIT 1`,
+       ORDER BY fecha_referencia DESC LIMIT 1`,
       [clienteId]
     );
     if (rowsSaldo && rowsSaldo.length > 0) {
@@ -2058,15 +2058,26 @@ const getCuentaCorriente = async (clienteId) => {
 
   const montoSI = saldoInicial ? parseFloat(saldoInicial.monto || 0) : 0;
 
-  // Crédito restante = saldo inicial menos lo ya aplicado ("Saldo a favor aplicado")
+  // Saldo inicial puede ser:
+  // - positivo: crédito a favor (reduce lo que debe)
+  // - negativo: deuda inicial (aumenta lo que debe)
+  const creditoInicial = Math.max(0, montoSI);
+  const deudaInicial = Math.max(0, -montoSI);
+
+  // Crédito restante = crédito inicial menos lo ya aplicado ("Saldo a favor aplicado")
+  // (solo tiene sentido si hay crédito inicial)
   let sumaSaldoAFavorAplicado = 0;
-  pagosCliente.forEach(p => {
-    if ((String(p.observaciones || '').toLowerCase()).includes('saldo a favor aplicado')) {
-      sumaSaldoAFavorAplicado += parseFloat(p.monto || 0) || 0;
-    }
-  });
-  const creditoRestante = Math.max(0, montoSI - sumaSaldoAFavorAplicado);
-  const totalPendiente = totalRemitos - totalPagado - creditoRestante;
+  if (creditoInicial > 0) {
+    pagosCliente.forEach(p => {
+      if ((String(p.observaciones || '').toLowerCase()).includes('saldo a favor aplicado')) {
+        sumaSaldoAFavorAplicado += parseFloat(p.monto || 0) || 0;
+      }
+    });
+  }
+  const creditoRestante = Math.max(0, creditoInicial - sumaSaldoAFavorAplicado);
+
+  // Neto pendiente (DEBE): remitos - pagado - crédito restante + deuda inicial
+  const totalPendiente = totalRemitos - totalPagado - creditoRestante + deudaInicial;
 
   return {
     cliente_id: clienteId,
@@ -2088,7 +2099,7 @@ const getSaldoInicialCliente = async (clienteId) => {
     `SELECT id, cliente_id, fecha_referencia, monto, descripcion 
      FROM saldos_iniciales 
      WHERE cliente_id = ? 
-     ORDER BY fecha_referencia LIMIT 1`,
+     ORDER BY fecha_referencia DESC LIMIT 1`,
     [clienteId]
   );
   return rows && rows.length > 0 ? rows[0] : null;

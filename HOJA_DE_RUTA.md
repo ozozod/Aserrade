@@ -114,6 +114,14 @@
 - [x] Crear documentación de seguridad
 - [x] Crear guía de comercialización
 - [x] Crear .gitignore
+- [x] Documentar guía completa de actualizaciones automáticas (`docs/GUIA_ACTUALIZACIONES.md`)
+
+### 12. Actualizaciones Automáticas ✅
+- [x] Integrar `electron-updater` con proveedor GitHub
+- [x] Configurar feed explícito (owner/repo) para evitar errores por metadata
+- [x] Habilitar detección de releases marcados como *Pre-release* (`allowPrerelease`)
+- [x] Logging de diagnóstico con `electron-log`
+- [x] Flujo automático: detectar → descargar → reiniciar e instalar
 
 ---
 

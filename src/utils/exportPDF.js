@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal, sumarPagosSaldoAFavorAplicado } from './formatoMoneda';
+import { calcularTotalesCuentaCorriente } from './cuentaCorrienteCalculos';
 
 // Función auxiliar para cargar imagen desde URL
 const loadImageFromUrl = (url) => {
@@ -250,7 +251,11 @@ const construirMovimientos = (remitos, pagos) => {
 
 // Calcula saldos usando historial completo y devuelve mapa clave->saldo (DEBE = deuda pendiente después de cada movimiento)
 const calcularSaldosDesdeHistorial = (movimientosHistorial, saldoPendienteResumen, montoSaldoInicial = 0) => {
-  let saldoAcumulado = 0;
+  // saldoAcumulado representa deuda neta:
+  // - positivo => el cliente debe
+  // - negativo => saldo a favor
+  // Convención: saldo inicial > 0 (a favor) arranca negativo; saldo inicial < 0 (deuda) arranca positivo
+  let saldoAcumulado = -(parseFloat(montoSaldoInicial || 0) || 0);
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {
@@ -380,7 +385,7 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     cuentaCorriente.pagos || []
   );
   
-  // Calcular saldos: usar total_pendiente del backend (ya con crédito restante) para que la tabla cierre con el resumen
+  // Calcular saldos: usar total_pendiente del backend para que la tabla cierre con el resumen
   const saldoPendienteResumen = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0) - montoSaldoInicial);
   const saldoPorClave = calcularSaldosDesdeHistorial(
     movimientosHistorial,
@@ -400,6 +405,11 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
       ? new Date(saldoInicial.fecha_referencia).toLocaleDateString('es-AR')
       : '';
     const textoBase = saldoInicial.descripcion || 'Saldo inicial';
+    const montoSIAbs = Math.abs(montoSaldoInicial);
+    // Mostrar siempre en la columna DEBE. Si es a favor, lo mostramos como negativo para que se entienda.
+    const debeStr = esAFavor
+      ? `- ${formatearMonedaConSimbolo(montoSIAbs)}`
+      : formatearMonedaConSimbolo(montoSIAbs);
     filasSaldoInicial = [[
       'S.I.',
       fechaRef,
@@ -408,8 +418,8 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
       '',
       '',
       '',
-      esAFavor ? formatearMonedaConSimbolo(Math.abs(montoSaldoInicial)) : '',   // PAGA A CTA
-      !esAFavor ? formatearMonedaConSimbolo(Math.abs(montoSaldoInicial)) : ''   // DEBE
+      '',      // PAGA A CTA (saldo inicial se muestra en DEBE)
+      debeStr  // DEBE
     ]];
   }
   
@@ -505,11 +515,11 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
         const offsetSaldo = filasSaldoInicial.length;
         const esSaldoInicialRow = data.row.index < offsetSaldo;
 
-        // Colorear fila de saldo inicial (azul si a favor, rojo si en contra)
+        // Colorear fila de saldo inicial (verde si a favor, rojo si deuda)
         if (esSaldoInicialRow) {
           if (esAFavor) {
-            data.cell.styles.fillColor = [204, 229, 255]; // azul suave
-            data.cell.styles.textColor = [0, 70, 160];
+            data.cell.styles.fillColor = [230, 255, 230]; // verde muy claro
+            data.cell.styles.textColor = [40, 167, 69]; // verde (texto)
             data.cell.styles.fontStyle = 'bold';
           } else {
             data.cell.styles.fillColor = [255, 205, 210]; // rojo suave
@@ -645,13 +655,16 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
   doc.text(formatearMonedaConSimbolo(totalPagadoMostrar), 195, yResumen, { align: 'right' });
   yResumen += 7;
 
-  // Saldo pendiente: Total Remitos - Total Pagado (efectivo) - saldo inicial
+  // Saldo pendiente: viene del backend (incluye saldo inicial con signo)
   const saldoPendiente = cuentaCorriente.totales.total_pendiente ?? ((cuentaCorriente.totales.total_remitos || 0) - (cuentaCorriente.totales.total_pagado || 0) - montoSaldoInicial);
-  const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
-  // Si total_pendiente es negativo, saldo a favor = saldo neto (no restar otra vez lo aplicado)
-  const saldoAFavorMostrar = saldoPendiente < 0
-    ? Math.abs(saldoPendiente)
-    : (montoSaldoInicial > 0 ? Math.max(0, montoSaldoInicial - sumaAplicadoSaldoFavor) : 0);
+  const totalesCalc = calcularTotalesCuentaCorriente({
+    totalRemitos: cuentaCorriente.totales.total_remitos || 0,
+    totalPagado: cuentaCorriente.totales.total_pagado || 0,
+    saldoInicialMonto: montoSaldoInicial,
+    pagos: cuentaCorriente.pagos || []
+  });
+  // Si total_pendiente es negativo, saldo a favor = saldo neto; si no, mostrar crédito restante (si existe)
+  const saldoAFavorMostrar = saldoPendiente < 0 ? Math.abs(saldoPendiente) : (totalesCalc.meta?.creditoRestante || 0);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
   
