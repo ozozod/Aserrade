@@ -123,6 +123,12 @@
 - [x] Logging de diagnóstico con `electron-log`
 - [x] Flujo automático: detectar → descargar → reiniciar e instalar
 
+### 13. Backups Ampliados ✅
+- [x] Actualizar backup “desde PC” para incluir `saldos_iniciales`, `usuarios` y `auditoria`
+- [x] Actualizar backups completos (Supabase/app) para incluir las tablas nuevas
+- [x] Unificar la UX de la pantalla de Backups para reflejar el alcance real
+
+
 ---
 
 ## 🎯 Funcionalidades Implementadas

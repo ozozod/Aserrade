@@ -93,7 +93,10 @@ DECLARE
     'articulos',
     'remitos',
     'remito_articulos',
-    'pagos'
+    'pagos',
+    'saldos_iniciales',
+    'usuarios',
+    'auditoria'
   ];
   tabla TEXT;
   total_registros INTEGER := 0;
@@ -114,9 +117,18 @@ BEGIN
     BEGIN
       backup_sql := backup_sql || generar_backup_tabla(tabla, fecha_backup);
       
-      -- Contar registros
-      EXECUTE format('SELECT COUNT(*) FROM %I', tabla) INTO total_registros;
-      backup_sql := backup_sql || '-- Total registros en ' || tabla || ': ' || total_registros || E'\n\n';
+      -- Contar registros solo si existe la tabla (evita que falle si aún no existe)
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = tabla
+      ) THEN
+        EXECUTE format('SELECT COUNT(*) FROM %I', tabla) INTO total_registros;
+        backup_sql := backup_sql || '-- Total registros en ' || tabla || ': ' || total_registros || E'\n\n';
+      ELSE
+        backup_sql := backup_sql || '-- Total registros en ' || tabla || ': 0 (tabla no existe)' || E'\n\n';
+      END IF;
     EXCEPTION
       WHEN OTHERS THEN
         backup_sql := backup_sql || '-- ERROR en tabla ' || tabla || ': ' || SQLERRM || E'\n\n';

@@ -313,7 +313,7 @@ const Backups = ({ theme }) => {
         </button>
         
         <div style={{ marginTop: '15px', fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>
-          ℹ️ El backup incluye: clientes, artículos, remitos, remito_articulos y pagos<br/>
+          ℹ️ El backup incluye: clientes, artículos, remitos, remito_articulos, pagos, saldos_iniciales, usuarios y auditoría<br/>
           📥 El archivo se descargará automáticamente a tu carpeta de Descargas<br/>
           💡 Recomendación: Guarda el archivo en Google Drive, USB o otro lugar seguro
         </div>

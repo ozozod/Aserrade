@@ -1998,6 +1998,7 @@ const getCuentaCorriente = async (clienteId) => {
   });
   
   // Total pagado: sumar TODOS los pagos válidos (EXCLUYENDO cheques rebotados y sus pagos ocultos)
+  // Nota: "Saldo a favor aplicado" NO es efectivo; es consumo de crédito. No debe contarse en total_pagado.
   pagosCliente.forEach(pago => {
     // Excluir pagos rebotados
     if (pagosRebotadosIds.has(pago.id) || pagosOcultosRebotadosIds.has(pago.id)) {
@@ -2009,6 +2010,11 @@ const getCuentaCorriente = async (clienteId) => {
     
     // Excluir SOLO pagos principales con monto 0 (son encabezados)
     if (monto === 0 && observaciones.includes('REMITOS_DETALLE:')) {
+      return;
+    }
+
+    // Excluir consumos de crédito (saldo a favor aplicado)
+    if ((String(observaciones).toLowerCase()).includes('saldo a favor aplicado')) {
       return;
     }
     
@@ -2064,20 +2070,20 @@ const getCuentaCorriente = async (clienteId) => {
   const creditoInicial = Math.max(0, montoSI);
   const deudaInicial = Math.max(0, -montoSI);
 
-  // Crédito restante = crédito inicial menos lo ya aplicado ("Saldo a favor aplicado")
-  // (solo tiene sentido si hay crédito inicial)
+  // MODO MANUAL:
+  // - El saldo inicial NO impacta el DEBE automáticamente.
+  // - Solo impacta cuando existe un pago/movimiento "Saldo a favor aplicado".
+  // Por eso, el pendiente descuenta SOLO lo aplicado (no el crédito restante).
   let sumaSaldoAFavorAplicado = 0;
-  if (creditoInicial > 0) {
-    pagosCliente.forEach(p => {
-      if ((String(p.observaciones || '').toLowerCase()).includes('saldo a favor aplicado')) {
-        sumaSaldoAFavorAplicado += parseFloat(p.monto || 0) || 0;
-      }
-    });
-  }
+  pagosCliente.forEach(p => {
+    if ((String(p.observaciones || '').toLowerCase()).includes('saldo a favor aplicado')) {
+      sumaSaldoAFavorAplicado += Math.abs(parseFloat(p.monto || 0) || 0);
+    }
+  });
   const creditoRestante = Math.max(0, creditoInicial - sumaSaldoAFavorAplicado);
 
-  // Neto pendiente (DEBE): remitos - pagado - crédito restante + deuda inicial
-  const totalPendiente = totalRemitos - totalPagado - creditoRestante + deudaInicial;
+  // Neto pendiente (DEBE): remitos - pagado - aplicado + deuda inicial
+  const totalPendiente = totalRemitos - totalPagado - sumaSaldoAFavorAplicado + deudaInicial;
 
   return {
     cliente_id: clienteId,

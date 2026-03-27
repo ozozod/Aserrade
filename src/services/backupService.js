@@ -139,7 +139,16 @@ class BackupService {
         }
         sqlContent += `-- =====================================================\n\n`;
         
-        const tablas = ['clientes', 'articulos', 'remitos', 'remito_articulos', 'pagos'];
+        const tablas = [
+          'clientes',
+          'articulos',
+          'remitos',
+          'remito_articulos',
+          'pagos',
+          'saldos_iniciales',
+          'usuarios',
+          'auditoria'
+        ];
         const tablasIncluidas = [];
         let tamañoTotal = 0;
         

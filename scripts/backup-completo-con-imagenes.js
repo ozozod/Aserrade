@@ -130,7 +130,16 @@ async function generarBackupSQL() {
   sqlContent += `-- FECHA: ${new Date().toLocaleString('es-AR')}\n`;
   sqlContent += `-- =====================================================\n\n`;
   
-  const tablas = ['clientes', 'articulos', 'remitos', 'remito_articulos', 'pagos'];
+  const tablas = [
+    'clientes',
+    'articulos',
+    'remitos',
+    'remito_articulos',
+    'pagos',
+    'saldos_iniciales',
+    'usuarios',
+    'auditoria'
+  ];
   const tablasIncluidas = [];
   let totalRegistros = 0;
   

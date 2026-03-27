@@ -5,7 +5,8 @@ export const sumarSaldoAFavorAplicado = (pagos = []) => {
     const obs = String(p?.observaciones || '').toLowerCase();
     if (obs.includes('saldo a favor aplicado')) {
       const monto = parseFloat(p?.monto || 0) || 0;
-      suma += monto;
+      // Guardar como positivo aunque en algún caso venga con signo raro
+      suma += Math.abs(monto);
     }
   }
   return suma;
@@ -25,12 +26,15 @@ export const calcularTotalesCuentaCorriente = ({
   const creditoInicial = Math.max(0, montoSI);
   const deudaInicial = Math.max(0, -montoSI);
 
-  const aplicado = creditoInicial > 0 ? sumarSaldoAFavorAplicado(pagos) : 0;
+  // MODO MANUAL:
+  // El saldo inicial NO se descuenta automáticamente del DEBE.
+  // Solo se descuenta lo que esté efectivamente aplicado mediante movimientos "Saldo a favor aplicado".
+  const aplicado = sumarSaldoAFavorAplicado(pagos);
   const creditoRestante = Math.max(0, creditoInicial - aplicado);
 
   const totalPendiente = (parseFloat(totalRemitos || 0) || 0)
     - (parseFloat(totalPagado || 0) || 0)
-    - creditoRestante
+    - aplicado
     + deudaInicial;
 
   return {

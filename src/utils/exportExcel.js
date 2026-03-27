@@ -199,6 +199,7 @@ const construirMovimientosExcel = (remitos, pagos) => {
   Object.values(pagosAgrupados).forEach(pagoAgrupado => {
     const chequeRebotado = pagoAgrupado.cheque_rebotado === 1 || pagoAgrupado.cheque_rebotado === true || pagoAgrupado.cheque_rebotado === '1';
     const esCheque = pagoAgrupado.es_cheque === 1 || pagoAgrupado.es_cheque === true || pagoAgrupado.es_cheque === '1';
+    const esSaldoAFavorAplicado = (String(pagoAgrupado.observaciones || '').toLowerCase()).includes('saldo a favor aplicado');
     
     if (pagoAgrupado.montoTotal > 0 || chequeRebotado) {
       let concepto = pagoAgrupado.concepto;
@@ -215,7 +216,8 @@ const construirMovimientosExcel = (remitos, pagos) => {
         cantidad: '',
         precioUnitario: '',
         total: 0,
-        pago: pagoAgrupado.montoTotal,
+        // MODO MANUAL: "Saldo a favor aplicado" reduce el DEBE (se comporta como un pago)
+        pago: esSaldoAFavorAplicado ? Math.abs(pagoAgrupado.montoTotal) : pagoAgrupado.montoTotal,
         id: pagoAgrupado.id,
         orden: 0,
         es_cheque: pagoAgrupado.es_cheque,
@@ -246,8 +248,9 @@ const calcularSaldosDesdeHistorialExcel = (movimientosHistorial, saldoResumen, m
   // saldoAcumulado representa deuda neta:
   // - positivo => el cliente debe
   // - negativo => saldo a favor
-  // Convención: saldo inicial > 0 (a favor) arranca negativo; saldo inicial < 0 (deuda) arranca positivo
-  let saldoAcumulado = -(parseFloat(montoSaldoInicial || 0) || 0);
+  // MODO MANUAL: el saldo inicial NO afecta el saldo acumulado hasta que exista "Saldo a favor aplicado".
+  // Por lo tanto, el acumulado arranca en 0 y la fila SALDO INICIAL es solo informativa.
+  let saldoAcumulado = 0;
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {
@@ -585,7 +588,7 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
   
   const montoSaldoInicialExcel = (cuentaCorriente.saldoInicial && parseFloat(cuentaCorriente.saldoInicial.monto || 0)) || 0;
   // Usar total_pendiente del backend (crédito restante) para que la tabla cierre con el resumen
-  const saldoResumenTabla = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0) - montoSaldoInicialExcel);
+  const saldoResumenTabla = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0));
   const saldoPorClave = calcularSaldosDesdeHistorialExcel(
     movimientosHistorial,
     saldoResumenTabla,
@@ -778,7 +781,8 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
   dataRow++;
 
   // Saldo Pendiente (ya incluye saldo inicial desde el backend cuando existe)
-  const saldoPendienteAjustado = cuentaCorriente.totales.total_pendiente ?? ((cuentaCorriente.totales.total_remitos || 0) - (cuentaCorriente.totales.total_pagado || 0) - montoSaldoInicialExcel);
+  const deudaInicial = montoSaldoInicialExcel < 0 ? Math.abs(montoSaldoInicialExcel) : 0;
+  const saldoPendienteAjustado = cuentaCorriente.totales.total_pendiente ?? ((cuentaCorriente.totales.total_remitos || 0) - (cuentaCorriente.totales.total_pagado || 0) - sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos) + deudaInicial);
   const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
   // Si total_pendiente es negativo, saldo a favor = saldo neto (no restar otra vez lo aplicado)
   const saldoAFavorMostrar = saldoPendienteAjustado < 0

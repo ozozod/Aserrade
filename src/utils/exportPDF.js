@@ -201,6 +201,7 @@ const construirMovimientos = (remitos, pagos) => {
     // Verificar cheque rebotado (puede venir como 0/1 de la base de datos)
     const chequeRebotado = pagoAgrupado.cheque_rebotado === 1 || pagoAgrupado.cheque_rebotado === true || pagoAgrupado.cheque_rebotado === '1';
     const esCheque = pagoAgrupado.es_cheque === 1 || pagoAgrupado.es_cheque === true || pagoAgrupado.es_cheque === '1';
+    const esSaldoAFavorAplicado = (String(pagoAgrupado.observaciones || '').toLowerCase()).includes('saldo a favor aplicado');
     
     // Incluir si tiene monto > 0 O si es un cheque rebotado (debe aparecer aunque tenga monto 0)
     if (pagoAgrupado.montoTotal > 0 || chequeRebotado) {
@@ -223,7 +224,8 @@ const construirMovimientos = (remitos, pagos) => {
         cantidad: '',
         precioUnitario: '',
         total: 0,
-        pago: pagoAgrupado.montoTotal,
+        // MODO MANUAL: "Saldo a favor aplicado" reduce el DEBE (se comporta como un pago)
+        pago: esSaldoAFavorAplicado ? Math.abs(pagoAgrupado.montoTotal) : pagoAgrupado.montoTotal,
         id: pagoAgrupado.id,
         orden: 0,
         es_cheque: pagoAgrupado.es_cheque,
@@ -254,8 +256,9 @@ const calcularSaldosDesdeHistorial = (movimientosHistorial, saldoPendienteResume
   // saldoAcumulado representa deuda neta:
   // - positivo => el cliente debe
   // - negativo => saldo a favor
-  // Convención: saldo inicial > 0 (a favor) arranca negativo; saldo inicial < 0 (deuda) arranca positivo
-  let saldoAcumulado = -(parseFloat(montoSaldoInicial || 0) || 0);
+  // MODO MANUAL: el saldo inicial NO afecta el saldo acumulado hasta que exista "Saldo a favor aplicado".
+  // Por lo tanto, el acumulado arranca en 0 y la fila S.I. es solo informativa.
+  let saldoAcumulado = 0;
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {
@@ -386,7 +389,7 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
   );
   
   // Calcular saldos: usar total_pendiente del backend para que la tabla cierre con el resumen
-  const saldoPendienteResumen = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0) - montoSaldoInicial);
+  const saldoPendienteResumen = cuentaCorriente.totales?.total_pendiente ?? ((cuentaCorriente.totales?.total_remitos || 0) - (cuentaCorriente.totales?.total_pagado || 0));
   const saldoPorClave = calcularSaldosDesdeHistorial(
     movimientosHistorial,
     saldoPendienteResumen,
@@ -656,7 +659,12 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
   yResumen += 7;
 
   // Saldo pendiente: viene del backend (incluye saldo inicial con signo)
-  const saldoPendiente = cuentaCorriente.totales.total_pendiente ?? ((cuentaCorriente.totales.total_remitos || 0) - (cuentaCorriente.totales.total_pagado || 0) - montoSaldoInicial);
+  const saldoPendiente = cuentaCorriente.totales.total_pendiente ?? calcularTotalesCuentaCorriente({
+    totalRemitos: cuentaCorriente.totales.total_remitos || 0,
+    totalPagado: cuentaCorriente.totales.total_pagado || 0,
+    saldoInicialMonto: montoSaldoInicial,
+    pagos: cuentaCorriente.pagos || []
+  }).total_pendiente;
   const totalesCalc = calcularTotalesCuentaCorriente({
     totalRemitos: cuentaCorriente.totales.total_remitos || 0,
     totalPagado: cuentaCorriente.totales.total_pagado || 0,

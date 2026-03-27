@@ -109,7 +109,16 @@ async function ejecutarBackup() {
     sqlContent += `-- INCLUYE: Datos + Imágenes (base64 en foto_path e imagen_url)\n`;
     sqlContent += `-- =====================================================\n\n`;
     
-    const tablas = ['clientes', 'articulos', 'remitos', 'remito_articulos', 'pagos'];
+    const tablas = [
+      'clientes',
+      'articulos',
+      'remitos',
+      'remito_articulos',
+      'pagos',
+      'saldos_iniciales',
+      'usuarios',
+      'auditoria'
+    ];
     const tablasIncluidas = [];
     let totalRegistros = 0;
     
