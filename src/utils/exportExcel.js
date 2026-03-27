@@ -248,9 +248,9 @@ const calcularSaldosDesdeHistorialExcel = (movimientosHistorial, saldoResumen, m
   // saldoAcumulado representa deuda neta:
   // - positivo => el cliente debe
   // - negativo => saldo a favor
-  // MODO MANUAL: el saldo inicial NO afecta el saldo acumulado hasta que exista "Saldo a favor aplicado".
-  // Por lo tanto, el acumulado arranca en 0 y la fila SALDO INICIAL es solo informativa.
-  let saldoAcumulado = 0;
+  // Crédito inicial (monto > 0): arranca en 0 (manual). Deuda inicial (monto < 0): arranca en |monto|.
+  const mSi = parseFloat(montoSaldoInicial || 0) || 0;
+  let saldoAcumulado = mSi < 0 ? Math.abs(mSi) : 0;
   const saldoPorClave = new Map();
   
   movimientosHistorial.forEach(mov => {

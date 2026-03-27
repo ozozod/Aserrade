@@ -128,6 +128,9 @@
 - [x] Actualizar backups completos (Supabase/app) para incluir las tablas nuevas
 - [x] Unificar la UX de la pantalla de Backups para reflejar el alcance real
 
+### 14. PDF/Excel cuenta corriente — saldo inicial ✅
+- [x] Columna DEBE: si el saldo inicial es **deuda** (`monto` negativo en BD), el saldo acumulado **arranca** en ese monto (alineado con el resumen); si es **crédito a favor** (`monto` positivo), sigue en 0 hasta aplicar saldo a favor (modo manual).
+
 
 ---
 
