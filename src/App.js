@@ -5,7 +5,6 @@ import { DataCacheProvider } from './context/DataCacheContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { reportError } from './services/errorReportingService';
 import { promptNoBloqueante, alertNoBloqueante } from './utils/notificaciones';
-import { initSupabase } from './config/supabase';
 import Header from './components/Header';
 import Remitos from './components/Remitos';
 import Clientes from './components/Clientes';
@@ -27,7 +26,7 @@ export const UsuarioContext = React.createContext(null);
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('remitos');
-  const [supabaseReady, setSupabaseReady] = useState(false);
+  const [appReady, setAppReady] = useState(false);
   
   // Estado de autenticación
   const [usuarioLogueado, setUsuarioLogueado] = useState(null);
@@ -86,18 +85,9 @@ function AppContent() {
     restaurarSesion();
   }, []);
 
-  // Inicializar Supabase al cargar la app
+  // La app usa MySQL vía Electron (IPC).
   useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        await initSupabase();
-        setSupabaseReady(true);
-      } catch (error) {
-        console.error('Error inicializando Supabase:', error);
-        alert('Error al conectar con la base de datos. Por favor, verifica la configuración.');
-      }
-    };
-    initializeApp();
+    setAppReady(true);
   }, []);
 
   // Configurar capturador global de errores
@@ -136,7 +126,7 @@ function AppContent() {
 
   // Recargar datos al cambiar de pestaña
   useEffect(() => {
-    if (!supabaseReady || !usuarioLogueado) return;
+    if (!appReady || !usuarioLogueado) return;
     
     const recargarDatosPestaña = async () => {
       try {
@@ -179,11 +169,11 @@ function AppContent() {
     };
 
     recargarDatosPestaña();
-  }, [activeTab, supabaseReady, usuarioLogueado]);
+  }, [activeTab, appReady, usuarioLogueado]);
 
   // Recargar datos cuando la ventana recupera el foco
   useEffect(() => {
-    if (!supabaseReady || !usuarioLogueado) return;
+    if (!appReady || !usuarioLogueado) return;
 
     const handleFocus = async () => {
       try {
@@ -203,7 +193,7 @@ function AppContent() {
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [supabaseReady, usuarioLogueado]);
+  }, [appReady, usuarioLogueado]);
 
   // Funciones de autenticación
   const handleLogin = async (usuario) => {
@@ -265,8 +255,8 @@ function AppContent() {
     return <Login onLogin={handleLogin} />;
   }
 
-  // Esperar a que Supabase esté listo
-  if (!supabaseReady) {
+  // Esperar a que termine la inicialización mínima del frontend
+  if (!appReady) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -277,7 +267,7 @@ function AppContent() {
         gap: '20px'
       }}>
         <div style={{ fontSize: '18px' }}>Cargando aplicación...</div>
-        <div style={{ fontSize: '14px', opacity: 0.7 }}>Conectando con la base de datos...</div>
+        <div style={{ fontSize: '14px', opacity: 0.7 }}>Preparando la aplicación...</div>
       </div>
     );
   }

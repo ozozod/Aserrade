@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS pagos (
   INDEX idx_fecha (fecha)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Tabla de error_reports (si existe en Supabase)
+-- Tabla de error_reports (reportes desde la app)
 CREATE TABLE IF NOT EXISTS error_reports (
   id INT AUTO_INCREMENT PRIMARY KEY,
   error_message TEXT NOT NULL,

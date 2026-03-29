@@ -18,44 +18,6 @@ const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
 
-// Función para cargar credenciales de Supabase desde múltiples fuentes
-function cargarCredencialesSupabase() {
-  // 1. Intentar desde .env (variables REACT_APP_)
-  let SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
-  let SUPABASE_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
-  
-  if (SUPABASE_URL && SUPABASE_KEY) {
-    console.log('✅ Credenciales cargadas desde .env');
-    return { url: SUPABASE_URL, key: SUPABASE_KEY };
-  }
-  
-  // 2. Intentar desde config.json (usado por Electron)
-  const configPath = path.join(process.cwd(), 'config.json');
-  if (fs.existsSync(configPath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config.supabase && config.supabase.url && config.supabase.anonKey) {
-        console.log('✅ Credenciales cargadas desde config.json');
-        return { url: config.supabase.url, key: config.supabase.anonKey };
-      }
-    } catch (error) {
-      console.warn('⚠️ Error leyendo config.json:', error.message);
-    }
-  }
-  
-  // 3. Valores por defecto (desarrollo - del código fuente)
-  const defaultUrl = 'https://uoisgayimsbqugablshq.supabase.co';
-  const defaultKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvaXNnYXlpbXNicXVnYWJsc2hxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDE3MjEsImV4cCI6MjA3OTIxNzcyMX0.Aswdut5lDyocIqyfksjTXmi_CaUevaAAGIv_kv7ygew';
-  
-  console.log('⚠️ Usando credenciales por defecto (desarrollo)');
-  return { url: defaultUrl, key: defaultKey };
-}
-
-// Cargar credenciales
-const credenciales = cargarCredencialesSupabase();
-const SUPABASE_URL = credenciales.url;
-const SUPABASE_KEY = credenciales.key;
-
 // OPCIÓN 1: Carpeta de Google Drive Desktop (Recomendado)
 // Encuentra automáticamente la carpeta de Google Drive
 function encontrarCarpetaGoogleDrive() {

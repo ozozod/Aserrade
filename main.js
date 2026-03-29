@@ -10,7 +10,7 @@ const AppUpdater = require('./autoUpdater');
 let mainWindow;
 let appUpdater;
 
-// Ya no usamos SQLite local, ahora usamos Supabase directamente desde React
+// Base de datos central: MySQL (Hostinger) vía IPC (`mysql:*`). Imágenes: base64/data URL en MySQL.
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -312,25 +312,17 @@ app.on('will-quit', (event) => {
   }
 });
 
-// Ya no usamos IPC handlers para base de datos
-// Ahora usamos Supabase directamente desde React
-// Solo mantenemos handlers para funciones de Electron (archivos, etc.)
+// IPC principal: MySQL + utilidades de Electron (archivos, etc.)
 
 // Leer configuración de credenciales desde archivo externo
 let config = null;
 const configPath = path.join(__dirname, 'config.json');
 const configPathExample = path.join(__dirname, 'config.json.example');
 
-// Valores por defecto (usados como fallback)
+// Valores por defecto (sin secretos). `config.json` es opcional para futuras extensiones.
 const defaultConfig = {
-  supabase: {
-    url: process.env.SUPABASE_URL || 'https://uoisgayimsbqugablshq.supabase.co',
-    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvaXNnYXlpbXNicXVnYWJsc2hxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDE3MjEsImV4cCI6MjA3OTIxNzcyMX0.Aswdut5lDyocIqyfksjTXmi_CaUevaAAGIv_kv7ygew'
-  },
-  errorReporting: {
-    url: process.env.ERROR_REPORTING_URL || 'https://sunwgbrfumgfurmwjqkb.supabase.co',
-    anonKey: process.env.ERROR_REPORTING_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1bndnYnJmdW1nZnVybXdqcWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NzE3MzMsImV4cCI6MjA3OTI0NzczM30.jqWZTJx-i-GJllMCuEKEPlIAQIIeErrWBAc1257p1i8',
-    enabled: true
+  app: {
+    name: 'Aserradero App'
   }
 };
 
@@ -371,61 +363,23 @@ loadConfig();
 // IPC handler para obtener configuración de forma segura
 ipcMain.handle('config:get', async () => {
   try {
-    // Asegurarse de que config esté cargado
     if (!config || typeof config !== 'object') {
       config = loadConfig();
     }
-    
-    // Si aún no hay config válida, usar valores por defecto
     if (!config || typeof config !== 'object') {
-      console.warn('⚠ Usando valores por defecto para configuración');
       config = defaultConfig;
     }
-    
-    // Construir objeto serializable manualmente (solo valores primitivos)
-    // Asegurarse de que todas las propiedades sean strings o booleans
-    const supabaseUrl = config.supabase && config.supabase.url ? String(config.supabase.url) : '';
-    const supabaseKey = config.supabase && config.supabase.anonKey ? String(config.supabase.anonKey) : '';
-    const errorUrl = config.errorReporting && config.errorReporting.url ? String(config.errorReporting.url) : '';
-    const errorKey = config.errorReporting && config.errorReporting.anonKey ? String(config.errorReporting.anonKey) : '';
-    const errorEnabled = config.errorReporting && config.errorReporting.enabled !== undefined 
-      ? Boolean(config.errorReporting.enabled) 
-      : true;
-    
-    const serializableConfig = {
-      supabase: {
-        url: supabaseUrl,
-        anonKey: supabaseKey
-      },
-      errorReporting: {
-        url: errorUrl,
-        anonKey: errorKey,
-        enabled: errorEnabled
+
+    // No exponer secretos.
+    return {
+      app: {
+        name: String((config.app && config.app.name) || defaultConfig.app.name)
       }
     };
-    
-    // Validar que tenemos los valores necesarios
-    if (!serializableConfig.supabase.url || !serializableConfig.supabase.anonKey) {
-      // Si no hay config válida, usar valores por defecto (tanto en dev como en producción)
-      console.warn('⚠ Usando valores por defecto para configuración');
-      config = defaultConfig;
-    }
-    
-    return serializableConfig;
   } catch (error) {
     console.error('Error en config:get:', error);
-    // Usar valores por defecto en caso de error (tanto en dev como en producción)
-    console.warn('⚠ Usando valores por defecto debido a error');
     return {
-      supabase: {
-        url: defaultConfig.supabase.url,
-        anonKey: defaultConfig.supabase.anonKey
-      },
-      errorReporting: {
-        url: defaultConfig.errorReporting.url,
-        anonKey: defaultConfig.errorReporting.anonKey,
-        enabled: defaultConfig.errorReporting.enabled
-      }
+      app: { name: defaultConfig.app.name }
     };
   }
 });
@@ -489,7 +443,7 @@ ipcMain.handle('file:compressImage', async (event, sourcePath, remitoId) => {
       })
       .toFile(tempPath);
     
-    // Leer el archivo comprimido como buffer para subir a Supabase
+    // Leer el archivo comprimido como buffer para serializarlo a base64 (IPC)
     const imageBuffer = fs.readFileSync(tempPath);
     
     // Obtener el tamaño del archivo
@@ -515,8 +469,7 @@ ipcMain.handle('file:compressImage', async (event, sourcePath, remitoId) => {
   }
 });
 
-// Ya no se usa getImage porque las imágenes están en Supabase Storage
-// Se accede directamente mediante URL pública
+// Las imágenes se persisten como data URL/base64 en MySQL (no hay storage externo obligatorio)
 
 // ============ MYSQL HOSTINGER SERVICE ============
 const mysqlService = require('./database/mysqlService');
@@ -672,6 +625,24 @@ ipcMain.handle('mysql:deleteAuditoria', async (event, auditoriaId) => {
 
 ipcMain.handle('mysql:deleteAuditoriaBulk', async (event, ids) => {
   return await mysqlService.deleteAuditoriaBulk(ids);
+});
+
+// ============ REPORTE DE ERRORES ============
+ipcMain.handle('mysql:createErrorReport', async (event, payload) => {
+  return await mysqlService.createErrorReport(payload);
+});
+
+ipcMain.handle('mysql:getErrorReports', async (event, params = {}) => {
+  return await mysqlService.getErrorReports(params);
+});
+
+ipcMain.handle('mysql:markErrorReportAsResolved', async (event, id, meta = {}) => {
+  return await mysqlService.markErrorReportAsResolved(id, meta);
+});
+
+// Backups (MySQL)
+ipcMain.handle('mysql:exportBackupSQL', async (event, params = {}) => {
+  return await mysqlService.exportBackupSQL(params);
 });
 
 // ===========================================

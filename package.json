@@ -1,6 +1,6 @@
 {
   "name": "aserradero-app",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "Aplicación de gestión de remitos y cuentas corrientes para aserradero",
   "homepage": "./",
   "main": "main.js",
@@ -32,7 +32,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.84.0",
     "electron-is-dev": "^2.0.0",
     "electron-log": "^5.0.1",
     "electron-updater": "^6.1.7",

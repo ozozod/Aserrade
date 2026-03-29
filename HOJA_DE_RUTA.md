@@ -67,13 +67,12 @@
 - [x] Configurar preload script para seguridad
 - [x] Configurar ventana principal de Electron
 
-### 6. Migración a Supabase ✅
-- [x] Configurar proyecto en Supabase
-- [x] Crear esquema de base de datos PostgreSQL
-- [x] Migrar componentes React a usar Supabase
-- [x] Implementar servicio de Supabase (supabaseService.js)
-- [x] Actualizar todos los componentes para usar Supabase
-- [x] Probar conexión y operaciones CRUD
+### 6. Base de datos centralizada (MySQL Hostinger) ✅
+- [x] MySQL remoto en Hostinger (usuarios, firewall, acceso)
+- [x] Servicio Node/Electron `database/mysqlService.js` + IPC `mysql:*`
+- [x] Frontend React consumiendo datos vía `hostingerService.js` / `databaseService.js`
+- [x] Imágenes: compresión en Electron + persistencia en MySQL (data URL/base64)
+- [x] Eliminación de cliente/dependencias legacy de base cloud en el runtime (solo MySQL)
 
 ### 7. Gestión de Artículos/Productos ✅
 - [x] Crear componente Articulos
@@ -109,7 +108,7 @@
 - [x] Crear GUIA_USUARIO.md para usuarios finales
 - [x] Crear ELECTRON_BUILDER.md con instrucciones de empaquetado
 - [x] Crear HOJA_DE_RUTA.md (este archivo)
-- [x] Crear documentación de Supabase
+- [x] Crear/actualizar documentación de Hostinger/MySQL (carpeta `hostinger/`)
 - [x] Crear guías de instalación y uso
 - [x] Crear documentación de seguridad
 - [x] Crear guía de comercialización
@@ -125,7 +124,7 @@
 
 ### 13. Backups Ampliados ✅
 - [x] Actualizar backup “desde PC” para incluir `saldos_iniciales`, `usuarios` y `auditoria`
-- [x] Actualizar backups completos (Supabase/app) para incluir las tablas nuevas
+- [x] Backup SQL desde la app (`exportBackupSQL`) incluyendo tablas nuevas (p.ej. `error_reports`)
 - [x] Unificar la UX de la pantalla de Backups para reflejar el alcance real
 
 ### 14. PDF/Excel cuenta corriente — saldo inicial ✅
@@ -240,7 +239,7 @@
 ### Archivos Importantes
 - `main.js`: Proceso principal de Electron
 - `preload.js`: Script de preload para seguridad
-- `database/db.js`: Lógica de base de datos SQLite
+- `database/mysqlService.js`: Lógica de base de datos MySQL (Hostinger)
 - `src/App.js`: Componente principal de React
 - `src/components/`: Componentes de la interfaz
 
@@ -263,7 +262,7 @@
 - ✅ Exportación a PDF y Excel (formato profesional)
 - ✅ Resumen general
 - ✅ Carga de fotos de remitos
-- ✅ Base de datos centralizada en Supabase (múltiples PCs)
+- ✅ Base de datos centralizada en MySQL Hostinger (múltiples PCs)
 - ✅ Instalador Windows (.exe) generado
 
 **Instalador Generado**: ✅
@@ -301,7 +300,7 @@
 
 **Especificaciones:**
 - **Usuarios**: Máximo 5 usuarios fijos (4 vendedores + 1 dueño)
-- **Base de datos**: Supabase (ya implementado)
+- **Base de datos**: MySQL Hostinger (ya implementado)
 - **Enfoque**: Identificación de usuarios para auditoría (no registro abierto)
 - **Permisos del dueño**: A consultar cuando se venda la app
 
@@ -391,7 +390,7 @@
 - [x] Configuración de MySQL para conexiones remotas
 
 ### Migración de Datos ✅
-- [x] Script de exportación de Supabase (`migrar_a_hostinger.js`)
+- [x] Scripts históricos de migración (deprecados en repo; operación diaria = MySQL)
 - [x] Creación de tablas en MySQL (`create_tables_mysql.sql`)
 - [x] Importación de datos (clientes, artículos, remitos, pagos)
 - [x] Verificación y corrección de datos migrados
@@ -407,9 +406,8 @@
 - [x] Filtro de pagos ocultos `[OCULTO]`
 
 ### Configuración Actual
-- **App instalada**: Conecta a Supabase (producción)
-- **App en desarrollo (`npm start`)**: Conecta a Hostinger MySQL
-- **Cambiar base de datos**: Editar `USE_HOSTINGER` en `src/services/databaseService.js`
+- **App (Electron)**: Conecta a MySQL Hostinger vía IPC (`mysql:*`)
+- **Cambiar base de datos**: Editar `database/mysqlService.js` (host/usuario/base) **con cuidado** (dev vs prod)
 
 ### Credenciales Hostinger MySQL
 - Host: `31.97.246.42`
@@ -419,5 +417,18 @@
 
 ---
 
-*Última actualización: Diciembre 2025 - Migración a Hostinger completada*
+## ✅ Release 2.0.10 (Marzo 2026)
+
+- [x] Versión **2.0.10** (`package.json`): instalador `Aserradero.App-2.0.10-Setup.exe` (electron-builder)
+- [x] Reportes de error: `app_version` alineada con `app.getVersion()` en Electron
+- [x] Sin dependencias cloud en runtime; MySQL + IPC
+
+## ✅ Actualización Marzo 2026
+
+- [x] Limpieza de restos legacy (frontend + dependencias + scripts con credenciales embebidas)
+- [x] Reportes de error: guardado en MySQL (`error_reports`) + corrección de “éxito falso” si falla el INSERT
+- [x] `App.js`: ya no bloquea el arranque por inicialización legacy del cliente cloud
+- [x] `config.json.example` sin secretos; `config:get` sin credenciales
+
+*Última actualización: Marzo 2026 - MySQL Hostinger como backend único*
 

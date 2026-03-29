@@ -2,8 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 console.log('Preload script cargado');
 
-// Exponer electronAPI en window
-// Ahora usamos Supabase directamente desde React, pero mantenemos algunas funciones de Electron
+// Exponer electronAPI en window (MySQL vía IPC + utilidades de escritorio)
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
     // Archivos (solo para Electron)
@@ -70,7 +69,15 @@ try {
       getAuditoria: (params) => ipcRenderer.invoke('mysql:getAuditoria', params),
       registrarAuditoria: (data) => ipcRenderer.invoke('mysql:registrarAuditoria', data),
       deleteAuditoria: (auditoriaId) => ipcRenderer.invoke('mysql:deleteAuditoria', auditoriaId),
-      deleteAuditoriaBulk: (ids) => ipcRenderer.invoke('mysql:deleteAuditoriaBulk', ids)
+      deleteAuditoriaBulk: (ids) => ipcRenderer.invoke('mysql:deleteAuditoriaBulk', ids),
+
+      // Reporte de errores
+      createErrorReport: (payload) => ipcRenderer.invoke('mysql:createErrorReport', payload),
+      getErrorReports: (params) => ipcRenderer.invoke('mysql:getErrorReports', params),
+      markErrorReportAsResolved: (id, meta) => ipcRenderer.invoke('mysql:markErrorReportAsResolved', id, meta),
+
+      // Backups
+      exportBackupSQL: (params) => ipcRenderer.invoke('mysql:exportBackupSQL', params)
     },
     
     // Actualizaciones automáticas

@@ -204,9 +204,9 @@ Estos archivos se sincronizan automáticamente con Google Drive en la nube.
 ### ❌ Error: "Variables de entorno no configuradas"
 
 **Solución:**
-1. Verifica que el archivo `.env` existe
-2. Verifica que tiene `REACT_APP_SUPABASE_URL` y `REACT_APP_SUPABASE_ANON_KEY`
-3. Ejecuta: `node scripts/configurar-google-drive.js` para configurar automáticamente
+1. Verifica conectividad a MySQL (el script usa `mysql2`; la configuración está en `database/mysqlService.js` o en el propio script según versión)
+2. Si usás carpeta personalizada, definí `BACKUP_DESTINO` en `.env` (opcional)
+3. Ejecutá el script manualmente desde la carpeta del proyecto para ver el error real en consola
 
 ---
 

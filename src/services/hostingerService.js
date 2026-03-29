@@ -255,7 +255,7 @@ export const getResumenGeneral = async (fechaDesde = null, fechaHasta = null) =>
 };
 
 // ============ FUNCIONES NO IMPLEMENTADAS (compatibilidad) ============
-// Estas funciones no están implementadas en MySQL todavía - usan Supabase
+// Estas funciones no están implementadas en MySQL todavía (stubs / compat)
 // Convertir imagen a base64 para guardar en MySQL
 export const uploadRemitoImage = async (imageBuffer, filename) => {
   try {
@@ -398,6 +398,28 @@ export const getAuditoria = async (params = {}) => {
 export const registrarAuditoria = async (data) => {
   if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
   return await window.electronAPI.invoke('mysql:registrarAuditoria', data);
+};
+
+// ============ REPORTE DE ERRORES ============
+export const createErrorReport = async (payload) => {
+  if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
+  return await window.electronAPI.mysql.createErrorReport(payload);
+};
+
+export const getErrorReports = async (params) => {
+  if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
+  return await window.electronAPI.mysql.getErrorReports(params);
+};
+
+export const markErrorReportAsResolved = async (id, meta) => {
+  if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
+  return await window.electronAPI.mysql.markErrorReportAsResolved(id, meta);
+};
+
+// ============ BACKUPS ============
+export const exportBackupSQL = async (params) => {
+  if (!isElectron()) throw new Error('MySQL solo disponible en Electron');
+  return await window.electronAPI.mysql.exportBackupSQL(params);
 };
 
 // ============ SALDOS INICIALES ============

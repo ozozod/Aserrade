@@ -1,14 +1,5 @@
 {
-  "supabase": {
-    "url": "https://uoisgayimsbqugablshq.supabase.co",
-    "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvaXNnYXlpbXNicXVnYWJsc2hxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NDE3MjEsImV4cCI6MjA3OTIxNzcyMX0.Aswdut5lDyocIqyfksjTXmi_CaUevaAAGIv_kv7ygew"
-  },
-  "errorReporting": {
-    "url": "https://sunwgbrfumgfurmwjqkb.supabase.co",
-    "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1bndnYnJmdW1nZnVybXdqcWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NzE3MzMsImV4cCI6MjA3OTI0NzczM30.jqWZTJx-i-GJllMCuEKEPlIAQIIeErrWBAc1257p1i8",
-    "enabled": true
+  "app": {
+    "name": "Aserradero App"
   }
 }
-
-
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import * as supabaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { formatearMonedaConSimbolo } from '../utils/formatoMoneda';
 import { exportResumenGeneralPDF } from '../utils/exportPDF';
 import { exportResumenGeneralExcel } from '../utils/exportExcel';
@@ -44,7 +44,7 @@ function Resumen() {
         const clientes = clientesCache || [];
         const deudas = await Promise.all(clientes.map(async (cliente) => {
           try {
-            const cuenta = await supabaseService.getCuentaCorriente(cliente.id);
+            const cuenta = await db.getCuentaCorriente(cliente.id);
             // getCuentaCorriente devuelve { totales: { total_pendiente: ... } }
             const deuda = cuenta?.totales?.total_pendiente || 0;
             return {
@@ -162,7 +162,7 @@ function Resumen() {
       try {
         const fechas = calcularFechasPeriodo(periodoSeleccionado);
         
-        const resumenActual = await supabaseService.getResumenGeneral(fechas.desde, fechas.hasta, false);
+        const resumenActual = await db.getResumenGeneral(fechas.desde, fechas.hasta, false);
         
         if (!isMounted) return;
         setResumen(resumenActual);
@@ -170,7 +170,7 @@ function Resumen() {
         if (periodoSeleccionado !== 'personalizado') {
           try {
             const fechasAnteriores = calcularFechasPeriodoAnterior(periodoSeleccionado);
-            const resumenAnt = await supabaseService.getResumenGeneral(fechasAnteriores.desde, fechasAnteriores.hasta, false);
+            const resumenAnt = await db.getResumenGeneral(fechasAnteriores.desde, fechasAnteriores.hasta, false);
             
             if (!isMounted) return;
             setResumenAnterior(resumenAnt);

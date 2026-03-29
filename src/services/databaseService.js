@@ -1,12 +1,11 @@
 // Servicio de Base de Datos - SOLO MySQL Hostinger
-// Supabase DESCONECTADO para datos (solo se usa para imágenes)
+// Imágenes: data URL / base64 persistido en MySQL vía IPC
 
 // Importar servicios
-import * as supabaseService from './supabaseService';
 import * as hostingerService from './hostingerService';
 
 // ============================================================
-// FORZAR USO DE MYSQL HOSTINGER - SUPABASE DESCONECTADO
+// FORZAR USO DE MYSQL HOSTINGER
 // ============================================================
 const USE_HOSTINGER = true; // SIEMPRE MySQL
 
@@ -65,12 +64,20 @@ export const cambiarPassword = hostingerService.cambiarPassword;
 export const getAuditoria = hostingerService.getAuditoria;
 export const registrarAuditoria = hostingerService.registrarAuditoria;
 
+// ============ REPORTE DE ERRORES ============
+export const createErrorReport = hostingerService.createErrorReport;
+export const getErrorReports = hostingerService.getErrorReports;
+export const markErrorReportAsResolved = hostingerService.markErrorReportAsResolved;
+
+// ============ BACKUPS ============
+export const exportBackupSQL = hostingerService.exportBackupSQL;
+
 // Info del servicio activo
 export const getServiceInfo = () => ({
   name: 'Hostinger MySQL',
   isHostinger: true
 });
 
-console.log('📦 Base de datos: HOSTINGER MySQL (Supabase DESCONECTADO)');
+console.log('📦 Base de datos: HOSTINGER MySQL');
 
 export default activeService;

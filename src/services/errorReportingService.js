@@ -1,44 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
-import { getErrorReportingConfig, initErrorReportingConfig } from '../config/errorReporting';
-
-// Cliente de Supabase para reporte de errores (se inicializa dinámicamente)
-let supabaseErrorClient = null;
-
-// Función para obtener el cliente de Supabase para errores
-const getErrorClient = async () => {
-  if (supabaseErrorClient) {
-    return supabaseErrorClient;
-  }
-  
-  const config = await initErrorReportingConfig();
-  if (config && config.enabled && config.supabaseUrl && config.supabaseKey) {
-    supabaseErrorClient = createClient(config.supabaseUrl, config.supabaseKey);
-    return supabaseErrorClient;
-  }
-  
-  return null;
-};
+// Reporte de errores (Hostinger MySQL via IPC)
+// Se guarda en tabla `error_reports` para que se pueda ver desde la app (Admin).
 
 /**
- * Reporta un error a Supabase
+ * Reporta un error a MySQL (tabla `error_reports`) vía Electron IPC.
  * @param {Error} error - El objeto Error
  * @param {Object} context - Contexto adicional (componente, props, etc.)
- * @returns {Promise<void>}
+ * @returns {Promise<{ success: boolean, error?: string }>}
  */
 export const reportError = async (error, context = {}) => {
   try {
-    const config = await initErrorReportingConfig();
-    
-    // Si el sistema está deshabilitado, no hacer nada
-    if (!config || !config.enabled) {
-      console.log('Error reporting está deshabilitado');
-      return;
-    }
-
-    const client = await getErrorClient();
-    if (!client) {
-      console.log('No se pudo inicializar el cliente de reporte de errores');
-      return;
+    // Solo funciona en Electron (IPC a MySQL)
+    if (!window?.electronAPI?.mysql?.createErrorReport) {
+      console.warn('Reporte de errores no disponible (no Electron)');
+      return { success: false, error: 'NO_ELECTRON' };
     }
     // Obtener información del error
     const errorMessage = error?.message || 'Error desconocido';
@@ -50,8 +24,14 @@ export const reportError = async (error, context = {}) => {
     const url = window.location?.href || 'Unknown';
     const userAgent = navigator?.userAgent || 'Unknown';
     
-    // Obtener versión de la app (si está disponible)
-    const appVersion = process.env.REACT_APP_VERSION || '1.0.0';
+    // Versión: en Electron viene de package.json (app.getVersion)
+    let appVersion = process.env.REACT_APP_VERSION || '1.0.0';
+    try {
+      if (window?.electronAPI?.getAppVersion) {
+        const meta = await window.electronAPI.getAppVersion();
+        if (meta?.version) appVersion = String(meta.version);
+      }
+    } catch (_) { /* ignorar */ }
     
     // Preparar datos adicionales
     const additionalData = {
@@ -65,30 +45,25 @@ export const reportError = async (error, context = {}) => {
       windowHeight: window?.innerHeight || 0
     };
 
-    // Insertar en Supabase
-    const { data, error: insertError } = await client
-      .from(config.tableName)
-      .insert([
-        {
-          error_message: errorMessage,
-          error_stack: errorStack,
-          error_type: errorType,
-          component_name: componentName,
-          user_agent: userAgent,
-          url: url,
-          app_version: appVersion,
-          additional_data: additionalData
-        }
-      ]);
-
-    if (insertError) {
-      console.error('Error al reportar error a Supabase:', insertError);
-    } else {
-      console.log('Error reportado exitosamente a Supabase');
+    const res = await window.electronAPI.mysql.createErrorReport({
+      error_message: errorMessage,
+      error_stack: errorStack,
+      error_type: errorType,
+      component_name: componentName,
+      user_agent: userAgent,
+      url: url,
+      app_version: appVersion,
+      additional_data: additionalData
+    });
+    if (!res?.success) {
+      console.error('Error al guardar reporte de error en MySQL:', res);
+      return { success: false, error: res?.error || 'MYSQL_INSERT_FAILED' };
     }
+    return { success: true, id: res.id };
   } catch (reportingError) {
     // No queremos que el sistema de reporte de errores cause más errores
     console.error('Error crítico en el sistema de reporte de errores:', reportingError);
+    return { success: false, error: reportingError?.message || String(reportingError) };
   }
 };
 
@@ -101,7 +76,7 @@ export const reportError = async (error, context = {}) => {
 export const reportManualError = async (message, context = {}) => {
   const error = new Error(message);
   error.name = context.errorType || 'ManualError';
-  await reportError(error, context);
+  return await reportError(error, context);
 };
 
 /**
@@ -110,29 +85,8 @@ export const reportManualError = async (message, context = {}) => {
  */
 export const getUnresolvedErrors = async () => {
   try {
-    const config = await initErrorReportingConfig();
-    if (!config || !config.enabled) {
-      return [];
-    }
-    
-    const client = await getErrorClient();
-    if (!client) {
-      return [];
-    }
-    
-    const { data, error } = await client
-      .from(config.tableName)
-      .select('*')
-      .eq('resolved', false)
-      .order('timestamp', { ascending: false })
-      .limit(100);
-
-    if (error) {
-      console.error('Error al obtener errores:', error);
-      return [];
-    }
-
-    return data || [];
+    if (!window?.electronAPI?.mysql?.getErrorReports) return [];
+    return await window.electronAPI.mysql.getErrorReports({ resolved: false, limit: 100 });
   } catch (err) {
     console.error('Error crítico al obtener errores:', err);
     return [];
@@ -148,32 +102,12 @@ export const getUnresolvedErrors = async () => {
  */
 export const markErrorAsResolved = async (errorId, resolvedBy = 'System', notes = '') => {
   try {
-    const config = await initErrorReportingConfig();
-    if (!config || !config.enabled) {
-      return false;
-    }
-    
-    const client = await getErrorClient();
-    if (!client) {
-      return false;
-    }
-    
-    const { error } = await client
-      .from(config.tableName)
-      .update({
-        resolved: true,
-        resolved_at: new Date().toISOString(),
-        resolved_by: resolvedBy,
-        notes: notes
-      })
-      .eq('id', errorId);
-
-    if (error) {
-      console.error('Error al marcar error como resuelto:', error);
-      return false;
-    }
-
-    return true;
+    if (!window?.electronAPI?.mysql?.markErrorReportAsResolved) return false;
+    const res = await window.electronAPI.mysql.markErrorReportAsResolved(errorId, {
+      resolved_by: resolvedBy,
+      notes
+    });
+    return !!res?.success;
   } catch (err) {
     console.error('Error crítico al marcar error como resuelto:', err);
     return false;

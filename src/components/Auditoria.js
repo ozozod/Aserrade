@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as supabaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { useTheme } from '../context/ThemeContext';
 import { formatearMoneda, formatearCantidadDecimal } from '../utils/formatoMoneda';
 import { formatearValorAuditoria, getNombreCampo } from '../utils/formatoAuditoria';
@@ -346,7 +346,7 @@ function Auditoria() {
       if (filtros.fechaHasta) filtrosAuditoria.fechaHasta = filtros.fechaHasta;
       filtrosAuditoria.limit = 1000; // Límite alto para obtener todos los registros
 
-      const data = await supabaseService.getAuditoria(filtrosAuditoria);
+      const data = await db.getAuditoria(filtrosAuditoria);
       setRegistros(data || []);
     } catch (error) {
       console.error('Error cargando auditoría:', error);

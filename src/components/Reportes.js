@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as supabaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { exportCuentaCorrientePDF, exportResumenGeneralPDF } from '../utils/exportPDF';
 import { exportCuentaCorrienteExcel, exportResumenGeneralExcel } from '../utils/exportExcel';
 import { formatearMoneda, formatearMonedaConSimbolo, formatearCantidad, formatearCantidadDecimal, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
@@ -109,7 +109,7 @@ function Reportes({ clienteIdFromClientes }) {
       await invalidateCache('pagos');
       await invalidateCache('remitos');
       
-      const data = await supabaseService.getCuentaCorriente(clienteId);
+      const data = await db.getCuentaCorriente(clienteId);
       console.log('Cuenta corriente cargada:', {
         clienteId,
         totalRemitos: data.remitos?.length || 0,
@@ -119,7 +119,7 @@ function Reportes({ clienteIdFromClientes }) {
       setCuentaCorriente(data);
       
       // Cargar artículos del cliente
-      const articulos = await supabaseService.getArticulos();
+      const articulos = await db.getArticulos();
       const articulosClienteFiltrados = articulos.filter(a => 
         a.cliente_id === parseInt(clienteId) || (a.cliente_id === null)
       );
@@ -188,17 +188,17 @@ function Reportes({ clienteIdFromClientes }) {
       };
 
       // Cargar cuenta corriente del cliente
-      let cuentaCorrienteData = await supabaseService.getCuentaCorriente(parseInt(selectedCliente));
+      let cuentaCorrienteData = await db.getCuentaCorriente(parseInt(selectedCliente));
       if (!cuentaCorrienteData.saldoInicial) {
         try {
-          const si = await supabaseService.getSaldoInicialCliente(parseInt(selectedCliente));
+          const si = await db.getSaldoInicialCliente(parseInt(selectedCliente));
           if (si) cuentaCorrienteData = { ...cuentaCorrienteData, saldoInicial: si };
         } catch (e) { /* ignorar */ }
       }
       const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
       
       // Cargar artículos del cliente
-      const articulos = await supabaseService.getArticulos();
+      const articulos = await db.getArticulos();
       const articulosDelCliente = articulos.filter(a => a.cliente_id === cliente.id);
       
       // Totales: usar regla única (saldo inicial con signo)
@@ -697,17 +697,17 @@ function Reportes({ clienteIdFromClientes }) {
                   setExportando(true);
                   try {
                     // Cargar cuenta corriente del cliente
-                    let cuentaCorrienteData = await supabaseService.getCuentaCorriente(parseInt(selectedCliente));
+                    let cuentaCorrienteData = await db.getCuentaCorriente(parseInt(selectedCliente));
                     if (!cuentaCorrienteData.saldoInicial) {
                       try {
-                        const si = await supabaseService.getSaldoInicialCliente(parseInt(selectedCliente));
+                        const si = await db.getSaldoInicialCliente(parseInt(selectedCliente));
                         if (si) cuentaCorrienteData = { ...cuentaCorrienteData, saldoInicial: si };
                       } catch (e) { /* ignorar */ }
                     }
                     const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
                     
                     // Cargar artículos del cliente
-                    const articulos = await supabaseService.getArticulos();
+                    const articulos = await db.getArticulos();
                     const articulosDelCliente = articulos.filter(a => a.cliente_id === cliente.id);
                     
                     // Totales: usar regla única (saldo inicial con signo)
@@ -1572,7 +1572,7 @@ function Reportes({ clienteIdFromClientes }) {
                                   }} 
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const imageUrl = supabaseService.getPublicImageUrl(remito.foto_path);
+                                    const imageUrl = db.getPublicImageUrl(remito.foto_path);
                                     setImagenModal({ abierto: true, url: imageUrl, remitoNumero: remito.numero || `Remito #${remito.id}` });
                                   }}
                                   title="Ver imagen del remito"

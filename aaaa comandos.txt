@@ -50,26 +50,16 @@ echo "✅ Restaurado desde Google Drive!"
 
 
 
-Resumen de scripts
-node Script	Qué hace
-scripts/borrar-imagenes-storage.js	Solo borra imágenes del Storage
-scripts/limpiar-todo-con-imagenes.js	Borra datos + imágenes + reinicia contadores
-supabase/limpiar_todo_reiniciar.sql	Solo borra datos SQL (no imágenes)
+NOTAS (2026) — comandos actualizados (MySQL)
 
+Backup SQL (ejemplo mysqldump en servidor)
+mysqldump -h HOST -u USER -p NOMBRE_BD > backup.sql
 
+Restaurar SQL (ejemplo)
+mysql -h HOST -u USER -p NOMBRE_BD < backup.sql
 
+Backup desde la app
+- Usar export SQL vía Electron IPC: mysql:exportBackupSQL (implementado en database/mysqlService.js)
 
-# 1. Ejecutar script de restauración
-node scripts/restaurar-backup-completo.js "C:\Users\ozozo\Backups_Aserradero\Backups_Aserradero\PONERCARPETADEBACKUP"
-
-# 2. Escribir "SI" cuando pregunte
-
-# 3. Ejecutar el SQL en Supabase SQL Editor (el script te lo indicará)
-
-# 4. Escribir "s" cuando pregunte si ya ejecutaste el SQL
-
-# 5. ¡Listo! Las imágenes se subirán automáticamente
-
-
-
-node scripts/subir-imagenes-backup.js "C:\Users\ozozo\Backups_Aserradero\Backups_Aserradero\PONERCARPETADEBACKUP"
+Documentación
+- Ver RESTAURAR_BACKUP.md / BACKUP_IMAGENES.md / hostinger/BACKUP_HOSTINGER.md

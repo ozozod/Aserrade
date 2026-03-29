@@ -1,5 +1,5 @@
 -- ============================================
--- MIGRACIÓN DE DATOS: SUPABASE -> HOSTINGER
+-- MIGRACIÓN DE DATOS (dump/import histórico) -> HOSTINGER MYSQL
 -- Fecha: 4/12/2025, 10:34:19
 -- ============================================
 

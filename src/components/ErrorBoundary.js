@@ -13,7 +13,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Reporta el error a Supabase
+    // Reporta el error (se guarda en MySQL vía IPC)
     reportError(error, {
       componentName: this.props.componentName || 'ErrorBoundary',
       errorInfo: errorInfo,

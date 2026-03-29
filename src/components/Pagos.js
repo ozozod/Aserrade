@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as supabaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { formatearMonedaConSimbolo, formatearMoneda, formatearNumeroVisual, limpiarFormatoNumero, formatearCantidad } from '../utils/formatoMoneda';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
@@ -401,7 +401,7 @@ function Pagos() {
       
       const promesas = clientesSinPendiente.map(async (cliente) => {
         try {
-          const cuentaCorriente = await supabaseService.getCuentaCorriente(cliente.id);
+          const cuentaCorriente = await db.getCuentaCorriente(cliente.id);
           nuevosPendientes[cliente.id] = cuentaCorriente?.totales?.total_pendiente || 0;
         } catch (error) {
           console.error(`Error calculando pendiente para cliente ${cliente.id}:`, error);
@@ -465,7 +465,7 @@ function Pagos() {
     // Cargar remitos directamente del cliente seleccionado desde la base de datos
     // Esto asegura que tenemos todos los remitos del cliente, no solo los del caché
     try {
-      const cuentaCorriente = await supabaseService.getCuentaCorriente(clienteId);
+      const cuentaCorriente = await db.getCuentaCorriente(clienteId);
       if (cuentaCorriente && cuentaCorriente.remitos) {
         const remitosNormalizados = cuentaCorriente.remitos.map(remito => ({
           ...remito,
@@ -688,7 +688,7 @@ function Pagos() {
           es_cheque: esCheque
         };
         
-        await supabaseService.createPago(nuevoPago);
+        await db.createPago(nuevoPago);
         
         alertNoBloqueante(`✅ Adelanto de ${formatearMonedaConSimbolo(montoNumero)} registrado correctamente`, 'success');
         
@@ -835,7 +835,7 @@ function Pagos() {
       console.log('📝 Total pagos a insertar:', pagosParaInsertar.length, pagosParaInsertar);
       
       // Insertar todos los pagos en un solo batch (mucho más rápido)
-      const pagosCreados = await supabaseService.createPagosBatch(pagosParaInsertar);
+      const pagosCreados = await db.createPagosBatch(pagosParaInsertar);
       console.log('✅ Pagos creados:', pagosCreados?.length, pagosCreados);
       
       if (!pagosCreados) {
@@ -846,7 +846,7 @@ function Pagos() {
       // Esto es mucho más eficiente que recalcular por cada pago individual
       if (clienteSeleccionado) {
         try {
-          await supabaseService.recalcularEstadosRemitosCliente(parseInt(clienteSeleccionado));
+          await db.recalcularEstadosRemitosCliente(parseInt(clienteSeleccionado));
         } catch (error) {
           console.warn('Error recalculando estados de remitos (no crítico):', error);
         }
@@ -971,11 +971,11 @@ function Pagos() {
       
       if (tieneMultiplesRemitos && remitosDetalle) {
         // Pago múltiple: obtener cliente del primer remito
-        remitoPrincipal = await supabaseService.getRemitos(remitosDetalle[0].remito_id);
+        remitoPrincipal = await db.getRemitos(remitosDetalle[0].remito_id);
         console.log('remitoPrincipal (múltiple):', remitoPrincipal);
       } else {
         // Pago simple: obtener remito directo
-        remitoPrincipal = await supabaseService.getRemitos(pago.remito_id);
+        remitoPrincipal = await db.getRemitos(pago.remito_id);
         console.log('remitoPrincipal (simple):', remitoPrincipal);
       }
       
@@ -989,7 +989,7 @@ function Pagos() {
         setClienteEditPago(cliente || null);
         
         // Obtener todos los remitos del cliente
-        const cuentaCorriente = await supabaseService.getCuentaCorriente(clienteId);
+        const cuentaCorriente = await db.getCuentaCorriente(clienteId);
         console.log('Cuenta corriente:', cuentaCorriente);
         const remitosNormalizados = (cuentaCorriente.remitos || []).map(remito => ({
           ...remito,
@@ -1052,7 +1052,7 @@ function Pagos() {
       // Si no tiene cliente_id directo (pago viejo), buscar por remito
       if (!clienteIdPago && pago.remito_id) {
       try {
-        const remitoPago = await supabaseService.getRemitos(pago.remito_id);
+        const remitoPago = await db.getRemitos(pago.remito_id);
         if (remitoPago && remitoPago.length > 0) {
           clienteIdPago = remitoPago[0].cliente_id;
         }
@@ -1062,7 +1062,7 @@ function Pagos() {
       }
       
       // Eliminar el pago principal
-      await supabaseService.deletePago(pago.id);
+      await db.deletePago(pago.id);
       
       // Si tiene múltiples remitos, eliminar también los pagos ocultos asociados
       if (tieneMultiplesRemitos && remitosDetalle) {
@@ -1085,7 +1085,7 @@ function Pagos() {
         } else {
           // Buscar TODOS los pagos ocultos relacionados con estos remitos
           // No solo por fecha, sino TODOS los que tengan [OCULTO] y estén asociados a estos remitos
-          const todosPagos = await supabaseService.getPagos();
+          const todosPagos = await db.getPagos();
           const pagosOcultosFiltrados = todosPagos.filter(p => {
             // Verificar que el pago esté asociado a uno de los remitos afectados
             const estaEnRemitosAfectados = remitosIds.includes(p.remito_id);
@@ -1104,7 +1104,7 @@ function Pagos() {
           if (pagosOcultosFiltrados.length > 0) {
             // Eliminar todos los pagos ocultos encontrados en paralelo
             const promesasEliminacion = pagosOcultosFiltrados.map(pagoOculto => 
-              supabaseService.deletePago(pagoOculto.id).catch(error => {
+              db.deletePago(pagoOculto.id).catch(error => {
                 console.warn(`Error eliminando pago oculto ${pagoOculto.id}:`, error);
                 return null; // Continuar aunque falle uno
               })
@@ -1131,8 +1131,8 @@ function Pagos() {
           
           // Recargar desde BD
           const [nuevosPagos, nuevosRemitos] = await Promise.all([
-            supabaseService.getPagos(),
-            supabaseService.getRemitos()
+            db.getPagos(),
+            db.getRemitos()
           ]);
           
           // Actualizar estados
@@ -1167,7 +1167,7 @@ function Pagos() {
       }
 
       // Obtener remitos del cliente desde la base (no depender del caché)
-      const cuentaCorriente = await supabaseService.getCuentaCorriente(clienteId);
+      const cuentaCorriente = await db.getCuentaCorriente(clienteId);
       if (!cuentaCorriente || !cuentaCorriente.remitos || cuentaCorriente.remitos.length === 0) {
         alertNoBloqueante('Este cliente no tiene remitos para aplicar el adelanto', 'info');
         return;
@@ -1228,7 +1228,7 @@ function Pagos() {
       }
 
       // Eliminar el adelanto original
-      await supabaseService.deletePago(adelantoAplicar.id);
+      await db.deletePago(adelantoAplicar.id);
 
       // Crear nuevo pago distribuido con PAGO_GRUPO_ID
       const remitosDetalle = remitosConPago.map(({ remito, monto }) => ({
@@ -1276,13 +1276,13 @@ function Pagos() {
         });
       }
 
-      await supabaseService.createPagosBatch(pagosParaInsertar);
+      await db.createPagosBatch(pagosParaInsertar);
 
       // Invalidar caché y recargar con delay
       setTimeout(async () => {
         await invalidateCache('pagos');
         await invalidateCache('remitos');
-        const pagosActualizados = await supabaseService.getPagos();
+        const pagosActualizados = await db.getPagos();
         setPagos(pagosActualizados || []);
         setPendientesClientes({});
       }, 500);
@@ -1333,7 +1333,7 @@ function Pagos() {
         : `REMITOS_DETALLE:${remitosDetalleJSON}`;
 
       // Actualizar el pago principal
-      await supabaseService.updatePago(editingPago.id, {
+      await db.updatePago(editingPago.id, {
         fecha: fechaConHora14(formDataEditPago.fecha), // Guardar con hora 14:00
         monto: 0, // El monto real está en los pagos ocultos
         observaciones: observacionesFinal
@@ -1355,7 +1355,7 @@ function Pagos() {
         }
         
         // Obtener todos los pagos y filtrar los ocultos anteriores
-        const todosPagos = await supabaseService.getPagos();
+        const todosPagos = await db.getPagos();
         const pagosOcultosFiltrados = todosPagos.filter(p => {
           // Normalizar fecha del pago a comparar
           let fechaPagoComparar = null;
@@ -1374,7 +1374,7 @@ function Pagos() {
           
         // Eliminar pagos ocultos anteriores
         for (const pago of pagosOcultosFiltrados) {
-          await supabaseService.deletePago(pago.id);
+          await db.deletePago(pago.id);
         }
       }
 
@@ -1387,12 +1387,12 @@ function Pagos() {
       }));
 
       if (pagosOcultosData.length > 0) {
-        await supabaseService.createPagosBatch(pagosOcultosData);
+        await db.createPagosBatch(pagosOcultosData);
       }
 
       // Recalcular estados del cliente
       if (clienteEditPago && clienteEditPago.id) {
-        await supabaseService.recalcularEstadosRemitosCliente(clienteEditPago.id);
+        await db.recalcularEstadosRemitosCliente(clienteEditPago.id);
       }
       
       // Invalidar caché y recargar datos
@@ -1409,7 +1409,7 @@ function Pagos() {
       ]);
       
       // Forzar actualización del estado directamente para evitar que desaparezcan los pagos
-      const nuevosPagos = await supabaseService.getPagos();
+      const nuevosPagos = await db.getPagos();
       setPagos(nuevosPagos || []);
       
       // INVALIDAR caché de pendientes para forzar recálculo
@@ -3005,7 +3005,7 @@ function Pagos() {
                                   );
                                   if (confirmar) {
                                     try {
-                                      await supabaseService.marcarChequeRebotado(pago.id, true);
+                                      await db.marcarChequeRebotado(pago.id, true);
                                       alertNoBloqueante('🚫 Cheque marcado como rebotado', 'warning');
                                       // Refrescar lista
                                       const pagosActualizados = await loadPagosCache(true);
@@ -3049,7 +3049,7 @@ function Pagos() {
                                   );
                                   if (confirmar) {
                                     try {
-                                      await supabaseService.marcarChequeRebotado(pago.id, false);
+                                      await db.marcarChequeRebotado(pago.id, false);
                                       alertNoBloqueante('✅ Cheque rehabilitado', 'success');
                                       // Refrescar lista
                                       const pagosActualizados = await loadPagosCache(true);

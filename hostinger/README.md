@@ -1,34 +1,23 @@
-# Migración a Hostinger
+# Hostinger / MySQL (operación actual)
 
-Este directorio contiene todos los scripts y documentación necesarios para migrar la base de datos desde Supabase a Hostinger.
+Este directorio contiene **SQL y documentación** para el esquema MySQL en Hostinger.
 
-## Archivos
+## Estado del proyecto
 
-- `create_tables_mysql.sql` - Script para crear las tablas en MySQL (Hostinger)
-- `migrar_datos_supabase_a_hostinger.js` - Script Node.js para migrar datos automáticamente
-- `MIGRACION_HOSTINGER.md` - Guía paso a paso de migración
-- `.env.example` - Plantilla de configuración
+- La app usa **MySQL** como backend en runtime.
+- Los datos viven en **MySQL** y el acceso desde la app es vía **Electron IPC** (`mysql:*`) implementado en `database/mysqlService.js`.
 
-## Pasos Rápidos
+## Archivos útiles
 
-### 1. Preparar Hostinger
-1. Crea la base de datos en el panel de Hostinger
-2. Anota las credenciales (host, usuario, contraseña, nombre de BD)
-3. Accede a phpMyAdmin y ejecuta `create_tables_mysql.sql`
+- `create_tables_mysql.sql` — crear tablas en MySQL
+- `config.example.json` — ejemplo de configuración (solo MySQL)
+- Documentación adicional: `MIGRACION_HOSTINGER.md`, `BACKUP_HOSTINGER.md` (puede contener notas históricas; priorizá el flujo actual: **SQL + mysqldump**)
 
-### 2. Migrar Datos
-1. Copia `.env.example` a `.env`
-2. Completa las credenciales de Supabase y MySQL
-3. Instala dependencias: `npm install mysql2 @supabase/supabase-js dotenv`
-4. Ejecuta: `node migrar_datos_supabase_a_hostinger.js`
+## Migración histórica
 
-### 3. Verificar
-- Revisa que todos los datos se hayan migrado correctamente
-- Compara conteos entre Supabase y MySQL
+Los scripts automáticos de migración con credenciales embebidas fueron **eliminados del repo** a propósito. Hoy la migración debe hacerse con **SQL controlado** (ver `MIGRACION_HOSTINGER.md`).
 
-## Notas
+## Backups recomendados hoy
 
-- Haz backup de Supabase antes de migrar
-- Prueba primero en un entorno de desarrollo
-- Los archivos SQL generados se guardan en este directorio
-
+- Desde la app: generar **`.sql`** vía `exportBackupSQL` / IPC `mysql:exportBackupSQL`
+- En servidor: `mysqldump` + copia de seguridad off-site (Drive/OneDrive)

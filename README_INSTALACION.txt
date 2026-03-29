@@ -1,6 +1,6 @@
 ================================================================================
                     ASERRADERO APP - GUÍA DE INSTALACIÓN
-                         Versión 1.0.0
+                         Versión 2.0.10
 ================================================================================
 
 REQUISITOS DEL SISTEMA
@@ -17,7 +17,7 @@ PASOS DE INSTALACIÓN
 --------------------
 
 1. Ejecutar el instalador:
-   - Hacer doble clic en "Aserradero-App-1.0.0-Setup.exe"
+   - Hacer doble clic en "Aserradero.App-2.0.10-Setup.exe"
 
 2. Seguir el asistente de instalación:
    - Hacer clic en "Siguiente" para continuar
@@ -38,7 +38,7 @@ PRIMER USO
    - Buscar "Aserradero App" en el menú de inicio, o
    - Hacer doble clic en el acceso directo del escritorio
 
-2. La aplicación se conectará automáticamente a la base de datos en la nube.
+2. La aplicación se conectará automáticamente a la base de datos MySQL (Hostinger), si hay conectividad.
 
 3. Si es la primera vez, puedes cargar datos de prueba o comenzar a agregar
    clientes y remitos.
@@ -48,11 +48,11 @@ PRIMER USO
 CONFIGURACIÓN INICIAL (IMPORTANTE)
 -----------------------------------
 
-Si necesitas configurar las credenciales de conexión manualmente:
+Si necesitas configurar la conexión manualmente:
 
 1. Contactar al técnico de soporte
-2. Se te proporcionarán las credenciales de Supabase
-3. Editar el archivo de configuración si es necesario
+2. La configuración de MySQL se define en el build (proceso principal) — no se edita como una web app con `.env` de frontend
+3. Para cambios de servidor/base de datos, normalmente se requiere actualizar y redistribuir la app
 
 ================================================================================
 
@@ -91,5 +91,5 @@ NOTAS IMPORTANTES
 ================================================================================
 
 Copyright © 2024 - Aserradero App
-Versión 1.0.0
+Versión 2.0.10
 

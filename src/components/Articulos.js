@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as supabaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { formatearMonedaConSimbolo, formatearNumeroVisual, limpiarFormatoNumero } from '../utils/formatoMoneda';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
@@ -219,7 +219,7 @@ function Articulos() {
         if (imagenesSeleccionadas.length > 0) {
           for (const file of imagenesSeleccionadas) {
             try {
-              const imagenUrl = await supabaseService.uploadRemitoImage(file, `articulo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+              const imagenUrl = await db.uploadRemitoImage(file, `articulo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
               imagenesFinales.push(imagenUrl);
             } catch (imgError) {
               console.error('Error subiendo imagen:', imgError);
@@ -242,9 +242,9 @@ function Articulos() {
       }
       
       if (editingArticulo) {
-        await supabaseService.updateArticulo(editingArticulo.id, datosEnviar);
+        await db.updateArticulo(editingArticulo.id, datosEnviar);
       } else {
-        await supabaseService.createArticulo(datosEnviar);
+        await db.createArticulo(datosEnviar);
       }
       // Invalidar caché y recargar datos relacionados desde la base
       invalidateCache('articulos');
@@ -278,7 +278,7 @@ function Articulos() {
       if (!confirmado) return;
       setEliminandoId(id);
       try {
-        await supabaseService.deleteArticulo(id);
+        await db.deleteArticulo(id);
       // Invalidar caché y recargar datos relacionados desde la base
       invalidateCache('articulos');
       invalidateCache('remitos');
@@ -376,7 +376,7 @@ function Articulos() {
     let siguienteCodigo = '';
     if (!editingArticulo) {
       try {
-        siguienteCodigo = await supabaseService.obtenerSiguienteCodigo();
+        siguienteCodigo = await db.obtenerSiguienteCodigo();
       } catch (error) {
         console.error('Error obteniendo siguiente código:', error);
         siguienteCodigo = '0001';
@@ -517,7 +517,7 @@ function Articulos() {
               // Obtener siguiente código antes de abrir el formulario
               let siguienteCodigo = '0001';
               try {
-                siguienteCodigo = await supabaseService.obtenerSiguienteCodigo();
+                siguienteCodigo = await db.obtenerSiguienteCodigo();
               } catch (error) {
                 console.error('Error obteniendo siguiente código:', error);
               }

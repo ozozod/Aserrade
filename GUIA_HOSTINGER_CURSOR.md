@@ -1,5 +1,7 @@
 # 🚀 Guía Completa: Conectarse a Hostinger desde Cursor
 
+> **AVISO (2026):** partes de esta guía pueden contener pasos viejos; priorizá el esquema actual (**MySQL + Electron**).
+
 ## 📋 Índice
 
 1. [¿Qué es Hostinger y qué puedo hacer?](#qué-es-hostinger-y-qué-puedo-hacer)
@@ -248,59 +250,27 @@ ssh root@TU_IP_DEL_VPS
 
 ## ¿Qué puedes hacer con tu VPS Ubuntu?
 
-### 🗄️ 1. Instalar Base de Datos PostgreSQL
+### 🗄️ 1. Base de datos en el VPS (MySQL)
 
-**¿Por qué PostgreSQL?**
-- Ya usas Supabase (que usa PostgreSQL)
-- Misma sintaxis SQL
-- Fácil migración
+**¿Por qué MySQL aquí?**
+- Es el motor usado por la app en producción (Hostinger MySQL)
+- Evitás mezclar motores (Postgres vs MySQL) sin necesidad
 
-**Comandos:**
+**Comandos (ejemplo):**
 ```bash
-# Instalar PostgreSQL
 apt update
-apt install postgresql postgresql-contrib -y
-
-# Verificar que funciona
-systemctl status postgresql
-
-# Crear base de datos
-sudo -u postgres createdb aserradero_db
-
-# Crear usuario
-sudo -u postgres createuser aserradero_user
-sudo -u postgres psql -c "ALTER USER aserradero_user WITH PASSWORD 'tu_password_seguro';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE aserradero_db TO aserradero_user;"
-```
-
-### 🗄️ 2. Instalar Base de Datos MySQL (Alternativa)
-
-**Si prefieres MySQL:**
-```bash
 apt install mysql-server -y
 mysql_secure_installation
 
-# Crear base de datos
 mysql -u root -p
 CREATE DATABASE aserradero_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'aserradero_user'@'localhost' IDENTIFIED BY 'tu_password_seguro';
-GRANT ALL PRIVILEGES ON aserradero_db.* TO 'aserradero_user'@'localhost';
+CREATE USER 'aserradero_user'@'%' IDENTIFIED BY 'tu_password_seguro';
+GRANT ALL PRIVILEGES ON aserradero_db.* TO 'aserradero_user'@'%';
 FLUSH PRIVILEGES;
 EXIT;
 ```
 
-### 🟢 3. Instalar Node.js
-
-**Para crear API backend:**
-```bash
-# Instalar Node.js 18.x
-curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-apt-get install -y nodejs
-
-# Verificar
-node --version
-npm --version
-```
+> Nota: abrir MySQL a la red pública es sensible. Preferí VPN/SSH tunnel/firewall allowlist.
 
 ### 📁 4. Crear Sistema de Backups
 
@@ -314,21 +284,7 @@ cd /var/backups/aserradero
 nano backup-daily.sh
 ```
 
-### 🔄 5. Instalar PM2 (Para mantener API corriendo)
-
-**PM2 mantiene tu API siempre activa:**
-```bash
-npm install -g pm2
-
-# Iniciar aplicación
-pm2 start server.js --name aserradero-api
-
-# Iniciar automático al reiniciar servidor
-pm2 startup
-pm2 save
-```
-
-### 🌐 6. Configurar Firewall
+### 🌐 5. Configurar Firewall
 
 **Proteger el servidor:**
 ```bash
@@ -338,9 +294,6 @@ apt install ufw -y
 # Permitir SSH (IMPORTANTE: hacer primero)
 ufw allow 22/tcp
 
-# Permitir puerto de API
-ufw allow 3001/tcp
-
 # Habilitar firewall
 ufw enable
 
@@ -348,14 +301,14 @@ ufw enable
 ufw status
 ```
 
-### 📦 7. Instalar Git
+### 📦 6. Instalar Git
 
 **Para clonar repositorios:**
 ```bash
 apt install git -y
 ```
 
-### 🔍 8. Instalar Herramientas Útiles
+### 🔍 7. Instalar Herramientas Útiles
 
 ```bash
 # Editor de texto (nano es fácil)
@@ -372,34 +325,21 @@ apt install zip unzip -y
 
 ## Próximos Pasos
 
-### 🎯 Plan de Migración a Hostinger
+### 🎯 Plan operativo en Hostinger (estado deseado)
 
-1. **Fase 1: Configurar Base de Datos** ✅
+1. **Fase 1: MySQL**
    - [ ] Conectarte por SSH
-   - [ ] Instalar PostgreSQL o MySQL
-   - [ ] Crear base de datos
-   - [ ] Migrar datos de Supabase
+   - [ ] MySQL instalado y accesible (usuarios, permisos, firewall)
+   - [ ] Base creada (`aserradero_db` o la que corresponda)
+   - [ ] Backups programados (`mysqldump` + retención)
 
-2. **Fase 2: Crear API Backend**
-   - [ ] Instalar Node.js
-   - [ ] Crear servidor Express
-   - [ ] Conectar con base de datos
-   - [ ] Crear endpoints REST
+2. **Fase 2: App Electron**
+   - [ ] La app apunta al MySQL correcto (config en `database/mysqlService.js` en el build)
+   - [ ] Probar login + CRUD básico
 
-3. **Fase 3: Sistema de Backups**
-   - [ ] Script de backup automático
-   - [ ] Almacenar en carpeta del servidor
-   - [ ] Configurar tarea programada (cron)
-
-4. **Fase 4: Modificar Aplicación Electron**
-   - [ ] Cambiar de Supabase a API propia
-   - [ ] Probar conexión
-   - [ ] Migrar datos
-
-5. **Fase 5: Almacenamiento de Imágenes**
-   - [ ] Crear carpeta en servidor
-   - [ ] Subir imágenes existentes
-   - [ ] Modificar app para usar nuevo almacenamiento
+3. **Fase 3: Imágenes**
+   - [ ] Validar tamaño de backups SQL si hay muchas fotos en data URL
+   - [ ] (Opcional) política de compresión / límites si el SQL crece demasiado
 
 ### 📝 Información que Necesito de Ti
 

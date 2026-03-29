@@ -30,9 +30,9 @@
 - Esta app es para **probar cambios** antes de llevarlos a producción
 
 ## 📍 Archivos Clave
-- `database/mysqlService.js` - Configuración MySQL (línea 12: `database: 'aserradero_dev'`)
-- `src/services/databaseService.js` - Selector de servicio (línea 5: `USE_HOSTINGER = true`)
-- `src/services/hostingerService.js` - Servicio de Hostinger
+- `database/mysqlService.js` - Pool/conexión MySQL (host/usuario/base)
+- `src/services/databaseService.js` - Fachada React → IPC MySQL
+- `src/services/hostingerService.js` - Wrappers IPC (`window.electronAPI.mysql`)
 
 ## 🔄 Para Cambiar a Producción
 Si necesitas cambiar temporalmente a producción (NO recomendado):
@@ -40,7 +40,7 @@ Si necesitas cambiar temporalmente a producción (NO recomendado):
 2. Cambiar `database: 'aserradero_dev'` a `database: 'aserradero_db'`
 
 ## 📌 Notas
-- Las imágenes siguen usando Supabase Storage (no MySQL base64)
+- Las imágenes de remitos se guardan como **data URL / base64** en MySQL (vía IPC).
 - Esta app está separada de producción para evitar conflictos
 
 

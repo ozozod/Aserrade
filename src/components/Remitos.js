@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import * as supabaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { formatearMonedaConSimbolo, formatearMoneda, formatearCantidad, formatearCantidadDecimal, formatearNumeroVisual, limpiarFormatoNumero, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
@@ -413,7 +413,7 @@ function Remitos() {
         cliente_id: clienteId // Si hay cliente seleccionado, el artículo será exclusivo
       };
 
-      const articuloCreado = await supabaseService.createArticulo(nuevoArticulo);
+      const articuloCreado = await db.createArticulo(nuevoArticulo);
       
       // Invalidar caché y recargar
       invalidateCache('articulos');
@@ -564,7 +564,7 @@ function Remitos() {
         // Mostrar preview de la imagen seleccionada usando file:// protocol
         setImagenPreview(`file://${selectedPath.replace(/\\/g, '/')}`);
         
-        // Guardar la ruta temporalmente hasta que se cree el remito y se suba a Supabase
+        // Guardar la ruta temporalmente hasta comprimir y guardar la imagen en MySQL (data URL / base64)
         setFormData({ ...formData, foto_path: selectedPath });
       }
     } catch (error) {
@@ -625,7 +625,7 @@ function Remitos() {
         }
       }
       
-      // Manejo de imágenes: comprimir y subir a Supabase Storage
+      // Manejo de imágenes: comprimir y guardar en MySQL (como data URL / base64)
       let remitoId = editingRemito ? editingRemito.id : null;
       let fotoUrlFinal = formData.foto_path || null;
       
@@ -643,7 +643,7 @@ function Remitos() {
             monto_pagado: montoPagado,
             foto_path: null
           };
-          const remitoCreado = await supabaseService.createRemito(datosSinFoto);
+          const remitoCreado = await db.createRemito(datosSinFoto);
           remitoId = remitoCreado.id;
         }
         
@@ -663,12 +663,12 @@ function Remitos() {
             }
           } else {
             // Si es ArrayBuffer/Uint8Array, convertirlo usando la función
-            fotoUrlFinal = await supabaseService.uploadRemitoImage(imagenComprimida.buffer, imagenComprimida.filename);
+            fotoUrlFinal = await db.uploadRemitoImage(imagenComprimida.buffer, imagenComprimida.filename);
           }
           
           // Si estamos editando y había una imagen anterior, eliminarla (no hace nada en MySQL, pero por compatibilidad)
           if (editingRemito && editingRemito.foto_path) {
-            await supabaseService.deleteRemitoImage(editingRemito.foto_path);
+            await db.deleteRemitoImage(editingRemito.foto_path);
           }
         } catch (imgError) {
           console.error('Error subiendo imagen:', imgError);
@@ -684,9 +684,9 @@ function Remitos() {
         // Si estamos editando y no hay imagen nueva
         // Si formData.foto_path es null explícitamente, significa que el usuario eliminó la imagen
         if (formData.foto_path === null && editingRemito.foto_path) {
-          // Eliminar la imagen anterior de Storage
+          // Eliminar/reemplazar la imagen anterior (compat)
           try {
-            await supabaseService.deleteRemitoImage(editingRemito.foto_path);
+            await db.deleteRemitoImage(editingRemito.foto_path);
           } catch (imgError) {
             console.warn('Error eliminando imagen anterior:', imgError);
             // Continuar aunque falle la eliminación de la imagen
@@ -720,17 +720,17 @@ function Remitos() {
         fecha: fechaParaGuardar, // Asegurar formato YYYY-MM-DD sin hora
         articulos: articulosLimpios,
         monto_pagado: montoPagadoParaGuardar,
-        foto_path: fotoUrlFinal // URL pública de Supabase Storage
+        foto_path: fotoUrlFinal // data URL / referencia de imagen almacenada vía MySQL
       };
       
       // Si ya creamos el remito arriba, solo actualizar con la imagen
       if (remitoId && !editingRemito) {
-        await supabaseService.updateRemito(remitoId, datosEnviar);
+        await db.updateRemito(remitoId, datosEnviar);
       } else if (editingRemito) {
-        await supabaseService.updateRemito(editingRemito.id, datosEnviar);
+        await db.updateRemito(editingRemito.id, datosEnviar);
       } else {
         // Solo crear si no lo creamos arriba
-        const remitoCreado = await supabaseService.createRemito(datosEnviar);
+        const remitoCreado = await db.createRemito(datosEnviar);
         remitoId = remitoCreado?.id ?? null;
       }
       
@@ -755,10 +755,10 @@ function Remitos() {
       // Si fue creación (no edición) y hay cliente, verificar si tiene saldo a favor REAL (crédito restante) para ofrecer aplicarlo al remito
       if (!estabaEditando && remitoId && clienteIdForSaldo) {
         try {
-          let cuentaCorriente = await supabaseService.getCuentaCorriente(clienteIdForSaldo);
+          let cuentaCorriente = await db.getCuentaCorriente(clienteIdForSaldo);
           if (!cuentaCorriente?.saldoInicial) {
             try {
-              const si = await supabaseService.getSaldoInicialCliente(clienteIdForSaldo);
+              const si = await db.getSaldoInicialCliente(clienteIdForSaldo);
               if (si) cuentaCorriente = { ...cuentaCorriente, saldoInicial: si };
             } catch (e) { /* ignorar */ }
           }
@@ -813,7 +813,7 @@ function Remitos() {
       const fechaPago = remitoParaSaldoFavor.fecha && remitoParaSaldoFavor.fecha.match(/^\d{4}-\d{2}-\d{2}/)
         ? remitoParaSaldoFavor.fecha
         : obtenerFechaLocal();
-      await supabaseService.createPago({
+      await db.createPago({
         remito_id: remitoParaSaldoFavor.id,
         cliente_id: remitoParaSaldoFavor.cliente_id,
         fecha: fechaPago,
@@ -908,9 +908,9 @@ function Remitos() {
         };
       });
       
-      // Cargar la imagen si existe (ahora es una URL pública de Supabase)
+      // Cargar la imagen si existe (data URL o URL pública según el registro)
       if (remito.foto_path) {
-        setImagenPreview(remito.foto_path); // URL pública de Supabase Storage
+        setImagenPreview(remito.foto_path);
       } else {
         setImagenPreview(null);
       }
@@ -951,7 +951,7 @@ function Remitos() {
       if (!confirmado) return;
       setEliminandoId(id);
       try {
-        await supabaseService.deleteRemito(id);
+        await db.deleteRemito(id);
       // Invalidar caché y recargar datos relacionados desde la base
       invalidateCache('remitos');
       invalidateCache('pagos');
@@ -1645,7 +1645,7 @@ function Remitos() {
               )}
             </div>
             <small style={{ color: theme === 'dark' ? '#999' : '#666', display: 'block', marginTop: '5px' }}>
-              Las imágenes se comprimen automáticamente (1600px máximo, calidad 70%) y se suben a Supabase Storage para que todas las PCs puedan verlas. Tamaño estimado: ~100-300 KB por imagen.
+              Las imágenes se comprimen automáticamente (1600px máximo, calidad 70%) y se guardan en la base MySQL para que todas las PCs puedan verlas. Tamaño estimado: ~100-300 KB por imagen.
             </small>
           </div>
 
@@ -2094,7 +2094,7 @@ function Remitos() {
               )}
             </div>
             <small style={{ color: theme === 'dark' ? '#999' : '#666', display: 'block', marginTop: '5px' }}>
-              Las imágenes se comprimen automáticamente (1600px máximo, calidad 70%) y se suben a Supabase Storage para que todas las PCs puedan verlas. Tamaño estimado: ~100-300 KB por imagen.
+              Las imágenes se comprimen automáticamente (1600px máximo, calidad 70%) y se guardan en la base MySQL para que todas las PCs puedan verlas. Tamaño estimado: ~100-300 KB por imagen.
             </small>
           </div>
 
@@ -2508,7 +2508,7 @@ function Remitos() {
                               fontWeight: 'bold'
                             }} 
                             onClick={() => {
-                              const imageUrl = supabaseService.getPublicImageUrl(remito.foto_path);
+                              const imageUrl = db.getPublicImageUrl(remito.foto_path);
                               setImagenModal({ abierto: true, url: imageUrl, remitoNumero: remito.numero || `Remito #${remito.id}` });
                             }}
                             title="Ver imagen del remito"

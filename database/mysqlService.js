@@ -20,6 +20,7 @@ const dbConfig = {
 
 let pool = null;
 let saldosInicialesReadyPromise = null;
+let errorReportsReadyPromise = null;
 
 // Usuario actual para auditoría
 let usuarioActual = null;
@@ -65,6 +66,36 @@ const ensureSaldosInicialesTable = async () => {
     });
   }
   return saldosInicialesReadyPromise;
+};
+
+const ensureErrorReportsTable = async () => {
+  if (!errorReportsReadyPromise) {
+    errorReportsReadyPromise = getPool().execute(`
+      CREATE TABLE IF NOT EXISTS error_reports (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        error_message TEXT,
+        error_stack TEXT,
+        error_type VARCHAR(120),
+        component_name VARCHAR(255),
+        user_agent TEXT,
+        url TEXT,
+        app_version VARCHAR(50),
+        additional_data JSON,
+        resolved TINYINT(1) NOT NULL DEFAULT 0,
+        resolved_at DATETIME NULL,
+        resolved_by VARCHAR(255) NULL,
+        notes TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `).then(() => {
+      console.log('✓ Tabla error_reports lista');
+    }).catch(err => {
+      errorReportsReadyPromise = null;
+      console.warn('No se pudo crear tabla error_reports:', err.message);
+      throw err;
+    });
+  }
+  return errorReportsReadyPromise;
 };
 
 // Probar conexión
@@ -2148,6 +2179,102 @@ const setSaldoInicialCliente = async ({ cliente_id, fecha_referencia, monto, des
   }
 };
 
+// ============ REPORTE DE ERRORES ============
+const createErrorReport = async (payload = {}) => {
+  try {
+    await ensureErrorReportsTable();
+    const pool = getPool();
+    const {
+      error_message = null,
+      error_stack = null,
+      error_type = 'Error',
+      component_name = null,
+      user_agent = null,
+      url = null,
+      app_version = null,
+      additional_data = null
+    } = payload;
+
+    let additionalJson = null;
+    if (additional_data !== null && additional_data !== undefined) {
+      try {
+        additionalJson = JSON.stringify(additional_data);
+      } catch (e) {
+        additionalJson = JSON.stringify({ _serialization_error: String(e && e.message ? e.message : e) });
+      }
+    }
+
+    const [result] = await pool.execute(
+      `INSERT INTO error_reports 
+        (error_message, error_stack, error_type, component_name, user_agent, url, app_version, additional_data) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        error_message,
+        error_stack,
+        error_type,
+        component_name,
+        user_agent,
+        url,
+        app_version,
+        additionalJson
+      ]
+    );
+
+    return { success: true, id: result.insertId };
+  } catch (error) {
+    console.error('Error creando reporte en MySQL:', error);
+    return { success: false, error: error.message || String(error) };
+  }
+};
+
+const getErrorReports = async ({ resolved = false, limit = 100 } = {}) => {
+  try {
+    await ensureErrorReportsTable();
+    const pool = getPool();
+    const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+    const [rows] = await pool.execute(
+      `SELECT *
+       FROM error_reports
+       WHERE resolved = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [resolved ? 1 : 0, lim]
+    );
+
+    return (rows || []).map(r => {
+      const out = { ...r };
+      if (out.additional_data && typeof out.additional_data === 'string') {
+        try { out.additional_data = JSON.parse(out.additional_data); } catch (e) {}
+      }
+      return out;
+    });
+  } catch (error) {
+    console.error('Error leyendo reportes desde MySQL:', error);
+    return [];
+  }
+};
+
+const markErrorReportAsResolved = async (id, { resolved_by = 'Admin', notes = '' } = {}) => {
+  try {
+    await ensureErrorReportsTable();
+    const pool = getPool();
+    const rid = parseInt(id, 10);
+    if (isNaN(rid)) {
+      return { success: false, error: 'ID inválido' };
+    }
+    await pool.execute(
+      `UPDATE error_reports 
+       SET resolved = 1, resolved_at = NOW(), resolved_by = ?, notes = ?
+       WHERE id = ?`,
+      [String(resolved_by || 'Admin'), String(notes || ''), rid]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error marcando reporte como resuelto:', error);
+    return { success: false, error: error.message || String(error) };
+  }
+};
+
 const getResumenGeneral = async (fechaDesde = null, fechaHasta = null) => {
   // Total clientes (sin filtro por activo ya que la columna puede no existir)
   const [clientesResult] = await getPool().execute('SELECT COUNT(*) as total FROM clientes');
@@ -2480,6 +2607,77 @@ const escapeSQL = (value) => {
   return `'${String(value).replace(/'/g, "''").replace(/\\/g, '\\\\')}'`;
 };
 
+// Exporta un backup SQL completo para descarga desde la app (Hostinger/MySQL)
+const exportBackupSQL = async ({ observaciones = null } = {}) => {
+  const pool = getPool();
+  await ensureSaldosInicialesTable().catch(() => {});
+  await ensureErrorReportsTable().catch(() => {});
+
+  const fecha = new Date();
+  const fechaStr = fecha.toISOString().split('T')[0];
+  const horaStr = fecha.toTimeString().split(' ')[0].replace(/:/g, '');
+  const nombreArchivo = `backup_${fechaStr}_${horaStr}.sql`;
+
+  const tablas = [
+    'clientes',
+    'articulos',
+    'remitos',
+    'remito_articulos',
+    'pagos',
+    'saldos_iniciales',
+    'usuarios',
+    'auditoria',
+    'error_reports'
+  ];
+
+  let sql = `-- =====================================================\n`;
+  sql += `-- BACKUP COMPLETO DE BASE DE DATOS (MySQL)\n`;
+  sql += `-- FECHA: ${fechaStr}\n`;
+  sql += `-- HORA: ${fecha.toLocaleString('es-AR')}\n`;
+  if (observaciones) sql += `-- OBSERVACIONES: ${String(observaciones)}\n`;
+  sql += `-- =====================================================\n\n`;
+  sql += `SET FOREIGN_KEY_CHECKS=0;\n\n`;
+
+  const [rowsTables] = await pool.query(
+    'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()'
+  );
+  const existentes = new Set(rowsTables.map(r => r.TABLE_NAME || r.table_name));
+
+  for (const tabla of tablas) {
+    if (!existentes.has(tabla)) {
+      sql += `-- Tabla ${tabla}: no existe\n\n`;
+      continue;
+    }
+
+    const [rows] = await pool.query(`SELECT * FROM \`${tabla}\``);
+    sql += `-- ============================================\n`;
+    sql += `-- TABLA: ${tabla}\n`;
+    sql += `-- REGISTROS: ${(rows || []).length}\n`;
+    sql += `-- ============================================\n\n`;
+    sql += `TRUNCATE TABLE \`${tabla}\`;\n`;
+
+    if (!rows || rows.length === 0) {
+      sql += `\n`;
+      continue;
+    }
+
+    const columnas = Object.keys(rows[0]);
+    const colsSql = columnas.map(c => `\`${c}\``).join(', ');
+    for (const r of rows) {
+      const vals = columnas.map(c => escapeSQL(r[c]));
+      sql += `INSERT INTO \`${tabla}\` (${colsSql}) VALUES (${vals.join(', ')});\n`;
+    }
+    sql += `\n`;
+  }
+
+  sql += `SET FOREIGN_KEY_CHECKS=1;\n`;
+  sql += `-- =====================================================\n`;
+  sql += `-- FIN DEL BACKUP\n`;
+  sql += `-- =====================================================\n`;
+
+  return { success: true, nombreArchivo, sql };
+};
+
 // Obtener registros de auditoría
 const getAuditoria = async (params = {}) => {
   try {
@@ -2723,6 +2921,14 @@ module.exports = {
   deleteAuditoria,
   deleteAuditoriaBulk,
   getSaldoInicialCliente,
-  setSaldoInicialCliente
+  setSaldoInicialCliente,
+
+  // Reporte de errores
+  createErrorReport,
+  getErrorReports,
+  markErrorReportAsResolved,
+
+  // Backups
+  exportBackupSQL
 };
 

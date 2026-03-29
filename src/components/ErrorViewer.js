@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { getUnresolvedErrors, markErrorAsResolved } from '../services/errorReportingService';
-import { formatearMonedaConSimbolo } from '../utils/formatoMoneda';
-
 function ErrorViewer({ onClose }) {
   const { theme } = useTheme();
   const [errores, setErrores] = useState([]);

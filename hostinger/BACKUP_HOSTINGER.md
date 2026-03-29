@@ -1,5 +1,7 @@
 # 🔒 Sistema de Backup Automático - Hostinger
 
+> **AVISO (2026):** no commitees contraseñas reales en documentación. Usá gestor de secretos / variables de entorno.
+
 ## 📋 Resumen
 Sistema de backup automático para la base de datos MySQL en el VPS de Hostinger.
 - **Frecuencia**: Todos los días a las 3:00 AM (hora del servidor)
@@ -14,7 +16,7 @@ Sistema de backup automático para la base de datos MySQL en el VPS de Hostinger
 ```bash
 ssh root@31.97.246.42
 ```
-Contraseña: `123Pitufo244955#`
+Contraseña: *(configuración del servidor / no pegar secretos en el repo)*
 
 ### 2. Crear directorio de backups
 ```bash
@@ -164,12 +166,11 @@ rclone copy $BACKUP_FILE gdrive:Backups/Aserradero/
 
 ## ⚠️ Notas Importantes
 
-1. **Las fotos de remitos** actualmente están en Supabase Storage, no en MySQL
-2. El backup solo incluye los datos de la base de datos (clientes, remitos, pagos, etc.)
-3. Para hacer backup de las fotos, habría que migrarlas primero a Hostinger o hacer backup de Supabase por separado
-4. El espacio en disco del VPS es limitado, por eso se eliminan backups de más de 30 días
+1. **Las fotos de remitos** en la app actual suelen estar en MySQL como `data:image/...;base64,...` (columna `remitos.foto_path`). Un `mysqldump` **sí** incluye esos valores (el `.sql` puede pesar mucho).
+2. Si todavía existen registros antiguos con URLs externas, son casos puntuales (no el modelo actual).
+3. El espacio en disco del VPS es limitado, por eso se eliminan backups de más de 30 días
 
 ---
 
-*Última actualización: Diciembre 2025*
+*Última actualización: Marzo 2026*
 

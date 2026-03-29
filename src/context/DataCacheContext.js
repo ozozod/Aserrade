@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import * as supabaseService from '../services/databaseService';
-import { supabase, initSupabase } from '../config/supabase';
+import * as db from '../services/databaseService';
 
 const DataCacheContext = createContext();
 
@@ -50,7 +49,7 @@ export const DataCacheProvider = ({ children }) => {
       // Iniciar carga
       (async () => {
         try {
-          const data = await supabaseService.getClientes();
+          const data = await db.getClientes();
           setClientes(data);
           setLastUpdate(prevUpdate => ({ ...prevUpdate, clientes: new Date() }));
         } catch (error) {
@@ -76,7 +75,7 @@ export const DataCacheProvider = ({ children }) => {
     
     setLoading(prev => ({ ...prev, articulos: true }));
     try {
-      const data = await supabaseService.getArticulos();
+      const data = await db.getArticulos();
       setArticulos(data);
       setLastUpdate(prev => ({ ...prev, articulos: new Date() }));
       return data;
@@ -114,7 +113,7 @@ export const DataCacheProvider = ({ children }) => {
     setLoading(prev => ({ ...prev, remitos: true }));
     
     try {
-      const data = await supabaseService.getRemitos();
+      const data = await db.getRemitos();
       remitosRef.current = data; // Actualizar ref inmediatamente
       setRemitos(data);
       setLastUpdate(prev => ({ ...prev, remitos: new Date() }));
@@ -136,7 +135,7 @@ export const DataCacheProvider = ({ children }) => {
     
     setLoading(prev => ({ ...prev, pagos: true }));
     try {
-      const data = await supabaseService.getPagos();
+      const data = await db.getPagos();
       setPagos(data);
       setLastUpdate(prev => ({ ...prev, pagos: new Date() }));
       return data;
@@ -156,7 +155,7 @@ export const DataCacheProvider = ({ children }) => {
     
     setLoading(prev => ({ ...prev, resumen: true }));
     try {
-      const data = await supabaseService.getResumenGeneral();
+      const data = await db.getResumenGeneral();
       setResumen(data);
       setLastUpdate(prev => ({ ...prev, resumen: new Date() }));
       return data;
@@ -257,174 +256,7 @@ export const DataCacheProvider = ({ children }) => {
   }, [invalidateCache]);
 
   // Referencias para los listeners de Realtime
-  const channelsRef = useRef({
-    clientes: null,
-    articulos: null,
-    remitos: null,
-    pagos: null
-  });
-  
-  // Ref para controlar recargas y evitar loops
-  const recargandoRef = useRef({});
-  const debounceTimersRef = useRef({});
-  
-  // Función helper para recargar con debounce (usa las funciones de carga definidas arriba)
-  const recargarConDebounce = useCallback((tipo, fnLoad, delay = 2000) => {
-    // Si ya está recargando, ignorar
-    if (recargandoRef.current[tipo]) {
-      return;
-    }
-    
-    // Limpiar timer anterior
-    if (debounceTimersRef.current[tipo]) {
-      clearTimeout(debounceTimersRef.current[tipo]);
-    }
-    
-    // Establecer que está recargando
-    recargandoRef.current[tipo] = true;
-    
-    // Recargar después del delay
-    debounceTimersRef.current[tipo] = setTimeout(async () => {
-      try {
-        await fnLoad(true);
-      } catch (error) {
-        console.error(`Error recargando ${tipo}:`, error);
-      } finally {
-        // Liberar el flag después de un pequeño delay adicional
-        setTimeout(() => {
-          recargandoRef.current[tipo] = false;
-        }, 500);
-      }
-    }, delay);
-  }, []); // Sin dependencias porque fnLoad se pasa como parámetro
-
-  // Configurar listeners de Supabase Realtime para sincronización automática
-  useEffect(() => {
-    // Esperar a que Supabase esté inicializado
-    const setupRealtime = async () => {
-      // Si supabase no está inicializado, intentar inicializarlo
-      if (!supabase) {
-        try {
-          await initSupabase();
-        } catch (error) {
-          console.error('Error inicializando Supabase para Realtime:', error);
-          return;
-        }
-      }
-      
-      // Verificar nuevamente después de intentar inicializar
-      if (!supabase) {
-        console.warn('Supabase no está disponible para Realtime');
-        return;
-      }
-
-    // Listener para clientes
-    const clientesChannel = supabase
-      .channel('clientes-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'clientes' },
-        (payload) => {
-          console.log('Cambio detectado en clientes:', payload);
-          // Invalidar caché para forzar recarga
-          invalidateCache('clientes');
-          invalidateCache('remitos');
-          invalidateCache('pagos');
-          invalidateCache('resumen');
-          refreshRelated('clientes');
-          // Recargar con debounce para evitar loops
-          recargarConDebounce('clientes', loadClientes, 2000);
-          recargarConDebounce('remitos', loadRemitos, 2500);
-          recargarConDebounce('pagos', loadPagos, 3000);
-        }
-      )
-      .subscribe();
-
-    // Listener para artículos
-    const articulosChannel = supabase
-      .channel('articulos-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'articulos' },
-        (payload) => {
-          console.log('Cambio detectado en artículos:', payload);
-          invalidateCache('articulos');
-          invalidateCache('remitos');
-          refreshRelated('articulos');
-          // Recargar con debounce para evitar loops
-          recargarConDebounce('articulos', loadArticulos, 2000);
-          recargarConDebounce('remitos', loadRemitos, 2500);
-        }
-      )
-      .subscribe();
-
-    // Listener para remitos
-    const remitosChannel = supabase
-      .channel('remitos-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'remitos' },
-        (payload) => {
-          console.log('Cambio detectado en remitos:', payload);
-          invalidateCache('remitos');
-          invalidateCache('pagos');
-          invalidateCache('resumen');
-          refreshRelated('remitos');
-          // Recargar con debounce para evitar loops
-          recargarConDebounce('remitos', loadRemitos, 2000);
-          recargarConDebounce('pagos', loadPagos, 2500);
-        }
-      )
-      .subscribe();
-
-    // Listener para pagos
-    const pagosChannel = supabase
-      .channel('pagos-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'pagos' },
-        (payload) => {
-          console.log('Cambio detectado en pagos:', payload);
-          invalidateCache('pagos');
-          invalidateCache('remitos');
-          invalidateCache('resumen');
-          refreshRelated('pagos');
-          // Recargar con debounce para evitar loops
-          recargarConDebounce('pagos', loadPagos, 2000);
-          recargarConDebounce('remitos', loadRemitos, 2500);
-        }
-      )
-      .subscribe();
-
-      // Guardar referencias para limpiar al desmontar
-      channelsRef.current = {
-        clientes: clientesChannel,
-        articulos: articulosChannel,
-        remitos: remitosChannel,
-        pagos: pagosChannel
-      };
-    };
-    
-    // Ejecutar setup con un pequeño delay para asegurar que Supabase esté listo
-    const timeoutId = setTimeout(() => {
-      setupRealtime();
-    }, 1000);
-
-    // Limpiar listeners al desmontar
-    return () => {
-      clearTimeout(timeoutId);
-      if (supabase && channelsRef.current) {
-        if (channelsRef.current.clientes) {
-          supabase.removeChannel(channelsRef.current.clientes);
-        }
-        if (channelsRef.current.articulos) {
-          supabase.removeChannel(channelsRef.current.articulos);
-        }
-        if (channelsRef.current.remitos) {
-          supabase.removeChannel(channelsRef.current.remitos);
-        }
-        if (channelsRef.current.pagos) {
-          supabase.removeChannel(channelsRef.current.pagos);
-        }
-      }
-    };
-  }, []); // Solo ejecutar una vez al montar
+  // Nota: sincronización en tiempo real deshabilitada (la app refresca vía MySQL/IPC).
 
   const value = {
     // Datos en caché

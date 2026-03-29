@@ -13,18 +13,20 @@ Esta aplicación permite gestionar:
 
 ## Características
 
-- ✅ Funciona **offline** (no requiere conexión a internet)
-- ✅ Base de datos SQLite local
+- ✅ Aplicación de escritorio con **Electron**
+- ✅ Base de datos **MySQL** centralizada (Hostinger) accedida vía **IPC** desde el proceso principal
+- ✅ Fotos de remitos: compresión en Electron + almacenamiento en MySQL (data URL/base64)
 - ✅ Interfaz simple e intuitiva para usuarios no técnicos
 - ✅ Exportación a PDF y Excel
 - ✅ Cálculo automático de precios y saldos
 - ✅ Gestión completa de cuentas corrientes
+- ✅ Actualizaciones automáticas (GitHub Releases / `electron-updater`)
 
 ## Tecnologías
 
 - **Electron**: Framework para aplicaciones de escritorio
 - **React**: Librería para la interfaz de usuario
-- **SQLite (better-sqlite3)**: Base de datos local
+- **MySQL + mysql2**: Base de datos remota (servicio en `database/mysqlService.js`)
 - **jsPDF + jspdf-autotable**: Generación de PDFs
 - **xlsx**: Generación de archivos Excel
 
@@ -68,7 +70,7 @@ npm run build:electron
 ```
 
 El instalador se generará en la carpeta `dist/` con el nombre:
-- `Aserradero App-1.0.0-Setup.exe`
+- `Aserradero.App-2.0.10-Setup.exe` (según `version` en `package.json` / NSIS)
 
 **Nota:** El proceso completo puede tardar 10-20 minutos la primera vez.
 
@@ -180,16 +182,18 @@ aserradero-app/
 │   │   └── exportExcel.js
 │   ├── App.js
 │   └── index.js
-└── database/            # Base de datos
-    └── db.js           # Lógica de base de datos SQLite
+└── database/            # Base de datos (MySQL en proceso principal)
+    └── mysqlService.js  # Pool/conexión + queries MySQL (Hostinger)
 ```
 
 ## Base de Datos
 
-La base de datos SQLite se guarda automáticamente en:
-- **Windows**: `%APPDATA%\aserradero-app\database\aserradero.db`
-- **macOS**: `~/Library/Application Support/aserradero-app/database/aserradero.db`
-- **Linux**: `~/.config/aserradero-app/database/aserradero.db`
+La app usa **MySQL** centralizado. La conexión y consultas viven en el proceso principal de Electron:
+
+- `database/mysqlService.js`
+- IPC: `main.js` expone handlers `mysql:*` y `preload.js` los publica como `window.electronAPI.mysql`
+
+> Nota: configurá **dev/prod** con cuidado (host/usuario/base) en `database/mysqlService.js`.
 
 ### Esquema de Base de Datos
 
@@ -203,5 +207,5 @@ Para reportar errores o solicitar actualizaciones, contactar al desarrollador.
 
 ## Versión
 
-1.0.0 - Versión inicial
+Ver `package.json` → campo `version` (fuente de verdad para builds/instalador).
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import * as supabaseService from '../services/databaseService';
-import * as databaseService from '../services/databaseService';
+import * as db from '../services/databaseService';
 import { exportCuentaCorrientePDF } from '../utils/exportPDF';
 import { exportCuentaCorrienteExcel } from '../utils/exportExcel';
 import { useTheme } from '../context/ThemeContext';
 import { useDataCache } from '../context/DataCacheContext';
 import { formatearMonedaConSimbolo, formatearNumeroVisual, limpiarFormatoNumero, sumarPagosSaldoAFavorAplicado } from '../utils/formatoMoneda';
 import { alertNoBloqueante, confirmNoBloqueante } from '../utils/notificaciones';
+import { calcularTotalesCuentaCorriente } from '../utils/cuentaCorrienteCalculos';
 
 function Clientes({ onNavigate }) {
   const { theme } = useTheme();
@@ -177,7 +177,7 @@ function Clientes({ onNavigate }) {
             });
             
             // Cargar cuenta corriente
-            const cuentaCorriente = await supabaseService.getCuentaCorriente(cliente.id);
+            const cuentaCorriente = await db.getCuentaCorriente(cliente.id);
             
             if (!isMounted) return;
             
@@ -348,7 +348,7 @@ function Clientes({ onNavigate }) {
         // Obtener saldo anterior para comparar en auditoría
         let saldoAnterior = null;
         try {
-          saldoAnterior = await databaseService.getSaldoInicialCliente(editingCliente.id);
+          saldoAnterior = await db.getSaldoInicialCliente(editingCliente.id);
         } catch (e) { /* ignorar */ }
         
         if (saldoInicialParaAuditoria) {
@@ -357,9 +357,9 @@ function Clientes({ onNavigate }) {
           saldoInicialParaAuditoria = { monto: 0, anterior: saldoAnterior };
         }
         
-        await supabaseService.updateCliente(editingCliente.id, clientePayload, saldoInicialParaAuditoria);
+        await db.updateCliente(editingCliente.id, clientePayload, saldoInicialParaAuditoria);
       } else {
-        const nuevo = await supabaseService.createCliente(clientePayload, saldoInicialParaAuditoria);
+        const nuevo = await db.createCliente(clientePayload, saldoInicialParaAuditoria);
         if (nuevo && nuevo.id) {
           clienteId = nuevo.id;
         }
@@ -369,7 +369,7 @@ function Clientes({ onNavigate }) {
       if (clienteId && !isNaN(montoNum) && montoNum !== 0) {
         const montoFinal = saldoInicialEsNegativo ? -Math.abs(montoNum) : montoNum;
         const fechaRef = saldoInicialFecha || `${new Date().getFullYear()}-01-19`;
-        await databaseService.setSaldoInicialCliente({
+        await db.setSaldoInicialCliente({
           cliente_id: clienteId,
           fecha_referencia: fechaRef,
           monto: montoFinal,
@@ -423,7 +423,7 @@ function Clientes({ onNavigate }) {
     setShowForm(true);
     
     // Cargar saldo inicial del cliente
-    databaseService.getSaldoInicialCliente(cliente.id)
+    db.getSaldoInicialCliente(cliente.id)
       .then(saldo => {
         if (saldo) {
           const monto = parseFloat(saldo.monto || 0);
@@ -454,14 +454,14 @@ function Clientes({ onNavigate }) {
     setEliminandoId(id);
     try {
       // Verificar qué datos tiene el cliente
-      const remitos = await supabaseService.getRemitos(id);
-      const articulos = await supabaseService.getArticulos(id);
+      const remitos = await db.getRemitos(id);
+      const articulos = await db.getArticulos(id);
       
       // Contar pagos asociados
       let totalPagos = 0;
       if (remitos && remitos.length > 0) {
         for (const remito of remitos) {
-          const pagos = await supabaseService.getPagos(remito.id);
+          const pagos = await db.getPagos(remito.id);
           totalPagos += pagos ? pagos.length : 0;
         }
       }
@@ -491,10 +491,10 @@ function Clientes({ onNavigate }) {
       // 1. Eliminar todos los pagos
       if (remitos && remitos.length > 0) {
         for (const remito of remitos) {
-          const pagos = await supabaseService.getPagos(remito.id);
+          const pagos = await db.getPagos(remito.id);
           if (pagos && pagos.length > 0) {
             for (const pago of pagos) {
-              await supabaseService.deletePago(pago.id);
+              await db.deletePago(pago.id);
             }
           }
         }
@@ -503,7 +503,7 @@ function Clientes({ onNavigate }) {
       // 2. Eliminar todos los remitos
       if (remitos && remitos.length > 0) {
         for (const remito of remitos) {
-          await supabaseService.deleteRemito(remito.id);
+          await db.deleteRemito(remito.id);
         }
       }
       
@@ -511,13 +511,13 @@ function Clientes({ onNavigate }) {
       if (articulos && articulos.length > 0) {
         for (const articulo of articulos) {
           if (articulo.cliente_id === id) {
-            await supabaseService.deleteArticulo(articulo.id);
+            await db.deleteArticulo(articulo.id);
           }
         }
       }
       
       // 4. Eliminar el cliente
-      await supabaseService.deleteCliente(id);
+      await db.deleteCliente(id);
       
       // Invalidar caché y recargar
       await invalidateCache('clientes');
@@ -569,26 +569,27 @@ function Clientes({ onNavigate }) {
       };
 
       // Cargar cuenta corriente del cliente
-      let cuentaCorrienteData = await supabaseService.getCuentaCorriente(exportCliente.id);
+      let cuentaCorrienteData = await db.getCuentaCorriente(exportCliente.id);
       if (!cuentaCorrienteData.saldoInicial) {
         try {
-          const si = await supabaseService.getSaldoInicialCliente(exportCliente.id);
+          const si = await db.getSaldoInicialCliente(exportCliente.id);
           if (si) cuentaCorrienteData = { ...cuentaCorrienteData, saldoInicial: si };
         } catch (e) { /* ignorar */ }
       }
       const montoSI = cuentaCorrienteData.saldoInicial ? parseFloat(cuentaCorrienteData.saldoInicial.monto || 0) : 0;
-      const sumaSAF = sumarPagosSaldoAFavorAplicado(cuentaCorrienteData.pagos || []);
-      const creditoRestante = Math.max(0, montoSI - sumaSAF);
       
       // Cargar artículos del cliente
-      const articulos = await supabaseService.getArticulos();
+      const articulos = await db.getArticulos();
       const articulosDelCliente = articulos.filter(a => a.cliente_id === exportCliente.id);
       
-      // Totales: total_pendiente = remitos - pagado - crédito restante (no saldo inicial completo)
-      const totalesGenerales = {
-        ...(cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 }),
-        total_pendiente: (cuentaCorrienteData.totales?.total_remitos ?? 0) - (cuentaCorrienteData.totales?.total_pagado ?? 0) - creditoRestante
-      };
+      // Totales: usar regla única (igual que Reportes.js) para evitar diferencias entre pantallas
+      const totalesBase = cuentaCorrienteData.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
+      const totalesGenerales = calcularTotalesCuentaCorriente({
+        totalRemitos: totalesBase.total_remitos ?? 0,
+        totalPagado: totalesBase.total_pagado ?? 0,
+        saldoInicialMonto: montoSI,
+        pagos: cuentaCorrienteData.pagos || []
+      });
       
       // Filtrar por fechas si se especificaron
       let cuentaFiltrada = { ...cuentaCorrienteData };
@@ -683,7 +684,7 @@ function Clientes({ onNavigate }) {
         setCargandoClientes(prev => new Set([...prev, clienteId]));
         
         // Cargar en segundo plano SIN bloquear la expansión
-        supabaseService.getCuentaCorriente(clienteId)
+        db.getCuentaCorriente(clienteId)
           .then(cuentaCorriente => {
             setCuentasCorrientes(prev => {
               const nuevo = new Map(prev);

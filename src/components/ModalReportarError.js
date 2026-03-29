@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { reportError } from '../services/errorReportingService';
 import { alertNoBloqueante } from '../utils/notificaciones';
-import * as supabaseService from '../services/databaseService';
+import * as databaseService from '../services/databaseService';
 
 function ModalReportarError({ onClose }) {
   const { theme } = useTheme();
@@ -64,10 +64,10 @@ function ModalReportarError({ onClose }) {
           if (typeof imagen === 'string' && window.electronAPI && window.electronAPI.compressImage) {
             // Es una ruta de archivo en Electron
             const imagenComprimida = await window.electronAPI.compressImage(imagen, `error_${Date.now()}`);
-            imagenUrl = await supabaseService.uploadRemitoImage(imagenComprimida.buffer, imagenComprimida.filename);
+            imagenUrl = await databaseService.uploadRemitoImage(imagenComprimida.buffer, imagenComprimida.filename);
           } else if (imagen instanceof File) {
             // Es un archivo del navegador
-            imagenUrl = await supabaseService.uploadRemitoImage(imagen, `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+            imagenUrl = await databaseService.uploadRemitoImage(imagen, `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
           } else if (typeof imagen === 'string' && imagen.startsWith('data:image')) {
             // Ya es base64
             imagenUrl = imagen;
@@ -79,12 +79,15 @@ function ModalReportarError({ onClose }) {
       }
 
       // Reportar el error
-      await reportError(new Error(mensaje), {
+      const res = await reportError(new Error(mensaje), {
         componentName: 'ManualReport',
         source: 'user_report',
         userMessage: mensaje,
         imagenUrl: imagenUrl
       });
+      if (!res?.success) {
+        throw new Error(res?.error || 'No se pudo guardar el reporte en MySQL');
+      }
 
       alertNoBloqueante('✅ Error reportado exitosamente. ¡Gracias por tu ayuda!', 'success');
       onClose();
