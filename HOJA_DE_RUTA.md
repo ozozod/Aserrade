@@ -4,7 +4,7 @@
 
 **Fecha de inicio**: Noviembre 2024 (desarrollo inicial)  
 **Estado actual**: ✅ Versión inicial completada  
-**Última actualización**: Febrero 2026 — v2.0.4 (instalador y actualizaciones automáticas)
+**Última actualización**: Marzo 2026 — v2.1.0 (PDF/Excel cuenta corriente: concepto saldo inicial)
 
 ---
 
@@ -417,6 +417,11 @@
 
 ---
 
+## ✅ Release 2.1.0 (Marzo 2026)
+
+- [x] Versión **2.1.0** (`package.json`): instalador `Aserradero.App-2.1.0-Setup.exe` (electron-builder)
+- [x] PDF y Excel cuenta corriente: primera fila de saldo inicial muestra siempre el concepto **Saldo inicial** (no la descripción de BD tipo «saldo a favor de…»)
+
 ## ✅ Release 2.0.10 (Marzo 2026)
 
 - [x] Versión **2.0.10** (`package.json`): instalador `Aserradero.App-2.0.10-Setup.exe` (electron-builder)
@@ -430,5 +435,5 @@
 - [x] `App.js`: ya no bloquea el arranque por inicialización legacy del cliente cloud
 - [x] `config.json.example` sin secretos; `config:get` sin credenciales
 
-*Última actualización: Marzo 2026 - MySQL Hostinger como backend único*
+*Última actualización: Marzo 2026 — v2.1.0; MySQL Hostinger como backend único*
 

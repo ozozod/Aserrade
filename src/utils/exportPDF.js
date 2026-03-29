@@ -408,7 +408,7 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     const fechaRef = saldoInicial.fecha_referencia
       ? new Date(saldoInicial.fecha_referencia).toLocaleDateString('es-AR')
       : '';
-    const textoBase = saldoInicial.descripcion || 'Saldo inicial';
+    const textoBase = 'Saldo inicial';
     const montoSIAbs = Math.abs(montoSaldoInicial);
     // Mostrar siempre en la columna DEBE. Si es a favor, lo mostramos como negativo para que se entienda.
     const debeStr = esAFavor

@@ -364,7 +364,7 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
     const fechaRef = saldoInicial.fecha_referencia
       ? new Date(saldoInicial.fecha_referencia).toLocaleDateString('es-AR')
       : '';
-    const textoBase = saldoInicial.descripcion || 'Saldo inicial';
+    const textoBase = 'Saldo inicial';
     filaSaldo.getCell(1).value = 'SALDO INICIAL';
     filaSaldo.getCell(3).value = `${textoBase}${fechaRef ? ' al ' + fechaRef : ''}`;
     if (esAFavor) {
