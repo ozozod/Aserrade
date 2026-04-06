@@ -991,13 +991,18 @@ function Reportes({ clienteIdFromClientes }) {
               });
             }
             
-            // Total pendiente = remitos - pagado - crédito restante (saldo inicial menos lo ya aplicado)
-            const sumaAplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
-            const creditoRestante = Math.max(0, montoSI - sumaAplicadoSaldoFavor);
-            const totalPendienteReal = totalRemitosReal - pagosReales - creditoRestante;
-            const saldoAFavorMostrar = totalPendienteReal < 0
-              ? Math.max(0, Math.abs(totalPendienteReal) - sumaAplicadoSaldoFavor)
-              : 0;
+            // Regla única: usar totales del servicio (incluye adelantos/pagos no asociados a remitos)
+            const totalesBase = cuentaCorriente.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
+            const totalesGenerales = calcularTotalesCuentaCorriente({
+              totalRemitos: totalesBase.total_remitos ?? 0,
+              totalPagado: totalesBase.total_pagado ?? 0,
+              saldoInicialMonto: montoSI,
+              pagos: cuentaCorriente.pagos || []
+            });
+            const pend = totalesGenerales.total_pendiente || 0;
+            const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
+            const saldoAFavorOperativo = pend < 0 ? Math.abs(pend) : 0;
+            const saldoAFavorTotal = saldoAFavorOperativo + creditoRestante;
             
             return (
               <div className="card" style={{ 
@@ -1081,16 +1086,16 @@ function Reportes({ clienteIdFromClientes }) {
                   
                   <div style={{
                     padding: '15px',
-                    backgroundColor: totalPendienteReal > 0 
+                    backgroundColor: pend > 0 
                       ? (theme === 'dark' ? '#4a2020' : '#f8d7da')
-                      : totalPendienteReal < 0
+                      : pend < 0
                         ? (theme === 'dark' ? '#1e3a5f' : '#d1ecf1')
                         : (theme === 'dark' ? '#1e4a1e' : '#d4edda'),
                     borderRadius: '8px',
                     border: `1px solid ${
-                      totalPendienteReal > 0 
+                      pend > 0 
                         ? '#dc3545'
-                        : totalPendienteReal < 0
+                        : pend < 0
                           ? '#17a2b8'
                           : '#28a745'
                     }`
@@ -1098,26 +1103,33 @@ function Reportes({ clienteIdFromClientes }) {
                     <div style={{ 
                       fontSize: '13px', 
                       color: theme === 'dark' 
-                        ? (totalPendienteReal > 0 ? '#ff6b6b' : totalPendienteReal < 0 ? '#5dade2' : '#90ee90')
-                        : (totalPendienteReal > 0 ? '#721c24' : totalPendienteReal < 0 ? '#0c5460' : '#155724'),
+                        ? (pend > 0 ? '#ff6b6b' : pend < 0 ? '#5dade2' : '#90ee90')
+                        : (pend > 0 ? '#721c24' : pend < 0 ? '#0c5460' : '#155724'),
                       marginBottom: '5px'
                     }}>
-                      {totalPendienteReal < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
+                      {pend < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
                     </div>
                     <div style={{ 
                       fontSize: '20px', 
                       fontWeight: 'bold',
-                      color: totalPendienteReal > 0 
+                      color: pend > 0 
                         ? '#dc3545' 
-                        : totalPendienteReal < 0 
+                        : pend < 0 
                           ? '#17a2b8' 
                           : '#28a745'
                     }}>
-                      {totalPendienteReal < 0
-                        ? formatearMonedaConSimbolo(saldoAFavorMostrar)
-                        : formatearMonedaConSimbolo(totalPendienteReal)
-                      }
+                      {pend < 0 ? formatearMonedaConSimbolo(saldoAFavorTotal) : formatearMonedaConSimbolo(pend)}
                     </div>
+                    {creditoRestante > 0 && pend >= 0 && (
+                      <div style={{
+                        marginTop: '8px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        color: theme === 'dark' ? '#5dade2' : '#0c5460'
+                      }}>
+                        💚 Saldo a favor disponible: {formatearMonedaConSimbolo(creditoRestante)}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

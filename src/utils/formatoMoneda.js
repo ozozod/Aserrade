@@ -172,7 +172,8 @@ export const sumarPagosSaldoAFavorAplicado = (pagos) => {
   return pagos.reduce((sum, p) => {
     const obs = (p.observaciones || '').toLowerCase();
     if (obs.includes(TEXTO_SALDO_FAVOR_APLICADO)) {
-      return sum + (parseFloat(p.monto) || 0);
+      // Guardar como positivo aunque en algún caso venga con signo raro
+      return sum + Math.abs(parseFloat(p.monto) || 0);
     }
     return sum;
   }, 0);

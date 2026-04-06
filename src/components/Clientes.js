@@ -1545,9 +1545,19 @@ function Clientes({ onNavigate }) {
                           </span>
                         )}
                         {!estaCargando && cuentaCorriente && (() => {
-                          const pend = cuentaCorriente.totales.total_pendiente;
-                          const sumaAplicado = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos);
-                          const saldoAFavorMostrar = pend < 0 ? Math.max(0, Math.abs(pend) - sumaAplicado) : 0;
+                          const montoSI = cuentaCorriente.saldoInicial ? parseFloat(cuentaCorriente.saldoInicial.monto || 0) : 0;
+                          const totalesBase = cuentaCorriente.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
+                          const totalesGenerales = calcularTotalesCuentaCorriente({
+                            totalRemitos: totalesBase.total_remitos ?? 0,
+                            totalPagado: totalesBase.total_pagado ?? 0, // incluye adelantos/pagos no asociados a remitos
+                            saldoInicialMonto: montoSI,
+                            pagos: cuentaCorriente.pagos || []
+                          });
+
+                          const pend = totalesGenerales.total_pendiente || 0;
+                          const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
+                          const saldoAFavorOperativo = pend < 0 ? Math.abs(pend) : 0;
+                          const saldoAFavorTotal = saldoAFavorOperativo + creditoRestante;
                           return (
                           <span style={{ 
                             fontSize: '12px',
@@ -1556,21 +1566,20 @@ function Clientes({ onNavigate }) {
                             borderRadius: '4px',
                             backgroundColor: pend > 0 
                               ? (theme === 'dark' ? '#4a1a1a' : '#ffe6e6')
-                              : pend < 0 
+                              : saldoAFavorTotal > 0
                                 ? (theme === 'dark' ? '#1a3a4a' : '#e6f7ff')
                                 : (theme === 'dark' ? '#1a4a1a' : '#e6ffe6'),
                             color: pend > 0 
                               ? '#dc3545' 
-                              : pend < 0 
+                              : saldoAFavorTotal > 0
                                 ? '#17a2b8' 
                                 : '#28a745'
                           }}>
-                            {pend > 0 
-                              ? `💰 Adeuda: ${formatearMonedaConSimbolo(pend)}`
-                              : pend < 0
-                                ? (saldoAFavorMostrar > 0 ? `💚 Saldo a favor: ${formatearMonedaConSimbolo(saldoAFavorMostrar)}` : '✅ Al día')
-                                : '✅ Al día'
-                            }
+                            {pend > 0
+                              ? `💰 Adeuda: ${formatearMonedaConSimbolo(pend)}${saldoAFavorTotal > 0 ? ` · 💚 Saldo a favor: ${formatearMonedaConSimbolo(saldoAFavorTotal)}` : ''}`
+                              : saldoAFavorTotal > 0
+                                ? `💚 Saldo a favor: ${formatearMonedaConSimbolo(saldoAFavorTotal)}`
+                                : '✅ Al día'}
                           </span>
                           );
                         })()}
@@ -1669,13 +1678,23 @@ function Clientes({ onNavigate }) {
                       }}>
                         <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>Total Pagado</div>
                         <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#28a745' }}>
-                          {formatearMonedaConSimbolo(cuentaCorriente.totales.total_pagado ?? 0)}
+                          {formatearMonedaConSimbolo(cuentaCorriente.totales?.total_pagado ?? 0)}
                         </div>
                       </div>
                       {(() => {
-                        const pend = cuentaCorriente.totales.total_pendiente || 0;
-                        const sumaAplicado = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos || []);
-                        const saldoAFavorMostrar = pend < 0 ? Math.max(0, Math.abs(pend) - sumaAplicado) : Math.abs(pend);
+                        const montoSI = cuentaCorriente.saldoInicial ? parseFloat(cuentaCorriente.saldoInicial.monto || 0) : 0;
+                        const totalesBase = cuentaCorriente.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
+                        const totalesGenerales = calcularTotalesCuentaCorriente({
+                          totalRemitos: totalesBase.total_remitos ?? 0,
+                          totalPagado: totalesBase.total_pagado ?? 0,
+                          saldoInicialMonto: montoSI,
+                          pagos: cuentaCorriente.pagos || []
+                        });
+
+                        const pend = totalesGenerales.total_pendiente || 0;
+                        const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
+                        const saldoAFavorOperativo = pend < 0 ? Math.abs(pend) : 0;
+                        const saldoAFavorTotal = saldoAFavorOperativo + creditoRestante;
                         return (
                           <div style={{
                             padding: '10px',
@@ -1704,8 +1723,13 @@ function Clientes({ onNavigate }) {
                                   ? '#17a2b8'
                                   : '#28a745' 
                             }}>
-                              {formatearMonedaConSimbolo(saldoAFavorMostrar)}
+                              {pend < 0 ? formatearMonedaConSimbolo(saldoAFavorTotal) : formatearMonedaConSimbolo(pend)}
                             </div>
+                            {creditoRestante > 0 && pend >= 0 && (
+                              <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 'bold', color: '#17a2b8' }}>
+                                💚 Saldo a favor disponible: {formatearMonedaConSimbolo(creditoRestante)}
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
