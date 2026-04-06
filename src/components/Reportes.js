@@ -977,7 +977,9 @@ function Reportes({ clienteIdFromClientes }) {
             const pagosReales = remitosFiltrados.reduce((sum, remito) => {
               return sum + parseFloat(remito.monto_pagado || 0);
             }, 0);
-            const totalPagadoReal = pagosReales;
+            const aplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos || []);
+            // "Total Pagado" en UI = efectivo + saldo a favor aplicado
+            const totalPagadoReal = (parseFloat(pagosReales) || 0) + (parseFloat(aplicadoSaldoFavor) || 0);
             
             let totalChequesRebotados = 0;
             if (cuentaCorriente.pagos) {
@@ -1001,8 +1003,9 @@ function Reportes({ clienteIdFromClientes }) {
             });
             const pend = totalesGenerales.total_pendiente || 0;
             const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
-            const saldoAFavorOperativo = pend < 0 ? Math.abs(pend) : 0;
-            const saldoAFavorTotal = saldoAFavorOperativo + creditoRestante;
+            // Saldo neto que le importa al usuario:
+            // si hay crédito disponible, se usa para cubrir la deuda y el resto queda "a favor".
+            const neto = (parseFloat(pend) || 0) - (parseFloat(creditoRestante) || 0);
             
             return (
               <div className="card" style={{ 
@@ -1086,16 +1089,16 @@ function Reportes({ clienteIdFromClientes }) {
                   
                   <div style={{
                     padding: '15px',
-                    backgroundColor: pend > 0 
+                    backgroundColor: neto > 0 
                       ? (theme === 'dark' ? '#4a2020' : '#f8d7da')
-                      : pend < 0
+                      : neto < 0
                         ? (theme === 'dark' ? '#1e3a5f' : '#d1ecf1')
                         : (theme === 'dark' ? '#1e4a1e' : '#d4edda'),
                     borderRadius: '8px',
                     border: `1px solid ${
-                      pend > 0 
+                      neto > 0 
                         ? '#dc3545'
-                        : pend < 0
+                        : neto < 0
                           ? '#17a2b8'
                           : '#28a745'
                     }`
@@ -1103,33 +1106,23 @@ function Reportes({ clienteIdFromClientes }) {
                     <div style={{ 
                       fontSize: '13px', 
                       color: theme === 'dark' 
-                        ? (pend > 0 ? '#ff6b6b' : pend < 0 ? '#5dade2' : '#90ee90')
-                        : (pend > 0 ? '#721c24' : pend < 0 ? '#0c5460' : '#155724'),
+                        ? (neto > 0 ? '#ff6b6b' : neto < 0 ? '#5dade2' : '#90ee90')
+                        : (neto > 0 ? '#721c24' : neto < 0 ? '#0c5460' : '#155724'),
                       marginBottom: '5px'
                     }}>
-                      {pend < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
+                      {neto < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
                     </div>
                     <div style={{ 
                       fontSize: '20px', 
                       fontWeight: 'bold',
-                      color: pend > 0 
+                      color: neto > 0 
                         ? '#dc3545' 
-                        : pend < 0 
+                        : neto < 0 
                           ? '#17a2b8' 
                           : '#28a745'
                     }}>
-                      {pend < 0 ? formatearMonedaConSimbolo(saldoAFavorTotal) : formatearMonedaConSimbolo(pend)}
+                      {neto < 0 ? formatearMonedaConSimbolo(Math.abs(neto)) : formatearMonedaConSimbolo(neto)}
                     </div>
-                    {creditoRestante > 0 && pend >= 0 && (
-                      <div style={{
-                        marginTop: '8px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        color: theme === 'dark' ? '#5dade2' : '#0c5460'
-                      }}>
-                        💚 Saldo a favor disponible: {formatearMonedaConSimbolo(creditoRestante)}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

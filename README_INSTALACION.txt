@@ -1,6 +1,6 @@
 ================================================================================
                     ASERRADERO APP - GUÍA DE INSTALACIÓN
-                         Versión 2.1.0
+                         Versión 2.1.1
 ================================================================================
 
 REQUISITOS DEL SISTEMA
@@ -17,7 +17,7 @@ PASOS DE INSTALACIÓN
 --------------------
 
 1. Ejecutar el instalador:
-   - Hacer doble clic en "Aserradero.App-2.0.10-Setup.exe"
+   - Hacer doble clic en "Aserradero.App-2.1.1-Setup.exe"
 
 2. Seguir el asistente de instalación:
    - Hacer clic en "Siguiente" para continuar

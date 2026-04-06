@@ -1556,29 +1556,30 @@ function Clientes({ onNavigate }) {
 
                           const pend = totalesGenerales.total_pendiente || 0;
                           const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
-                          const saldoAFavorOperativo = pend < 0 ? Math.abs(pend) : 0;
-                          const saldoAFavorTotal = saldoAFavorOperativo + creditoRestante;
+                          // Saldo neto que le importa al usuario:
+                          // si hay crédito disponible, se usa para cubrir la deuda y el resto queda "a favor".
+                          const neto = (parseFloat(pend) || 0) - (parseFloat(creditoRestante) || 0);
                           return (
                           <span style={{ 
                             fontSize: '12px',
                             fontWeight: 'bold',
                             padding: '2px 8px',
                             borderRadius: '4px',
-                            backgroundColor: pend > 0 
+                            backgroundColor: neto > 0 
                               ? (theme === 'dark' ? '#4a1a1a' : '#ffe6e6')
-                              : saldoAFavorTotal > 0
+                              : neto < 0
                                 ? (theme === 'dark' ? '#1a3a4a' : '#e6f7ff')
                                 : (theme === 'dark' ? '#1a4a1a' : '#e6ffe6'),
-                            color: pend > 0 
+                            color: neto > 0 
                               ? '#dc3545' 
-                              : saldoAFavorTotal > 0
+                              : neto < 0
                                 ? '#17a2b8' 
                                 : '#28a745'
                           }}>
-                            {pend > 0
-                              ? `💰 Adeuda: ${formatearMonedaConSimbolo(pend)}${saldoAFavorTotal > 0 ? ` · 💚 Saldo a favor: ${formatearMonedaConSimbolo(saldoAFavorTotal)}` : ''}`
-                              : saldoAFavorTotal > 0
-                                ? `💚 Saldo a favor: ${formatearMonedaConSimbolo(saldoAFavorTotal)}`
+                            {neto > 0
+                              ? `💰 Adeuda: ${formatearMonedaConSimbolo(neto)}`
+                              : neto < 0
+                                ? `💚 Saldo a favor: ${formatearMonedaConSimbolo(Math.abs(neto))}`
                                 : '✅ Al día'}
                           </span>
                           );
@@ -1678,7 +1679,12 @@ function Clientes({ onNavigate }) {
                       }}>
                         <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>Total Pagado</div>
                         <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#28a745' }}>
-                          {formatearMonedaConSimbolo(cuentaCorriente.totales?.total_pagado ?? 0)}
+                          {(() => {
+                            const pagadoEfectivo = cuentaCorriente.totales?.total_pagado ?? 0;
+                            const aplicado = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos || []);
+                            // "Total Pagado" en UI = efectivo + saldo a favor aplicado (consumo de crédito)
+                            return formatearMonedaConSimbolo((parseFloat(pagadoEfectivo) || 0) + (parseFloat(aplicado) || 0));
+                          })()}
                         </div>
                       </div>
                       {(() => {
@@ -1693,21 +1699,20 @@ function Clientes({ onNavigate }) {
 
                         const pend = totalesGenerales.total_pendiente || 0;
                         const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
-                        const saldoAFavorOperativo = pend < 0 ? Math.abs(pend) : 0;
-                        const saldoAFavorTotal = saldoAFavorOperativo + creditoRestante;
+                        const neto = (parseFloat(pend) || 0) - (parseFloat(creditoRestante) || 0);
                         return (
                           <div style={{
                             padding: '10px',
-                            backgroundColor: pend > 0
+                            backgroundColor: neto > 0
                               ? (theme === 'dark' ? '#4a1e1e' : '#f5c2c5')
-                              : pend < 0
+                              : neto < 0
                                 ? (theme === 'dark' ? '#1e3a5f' : '#cfe2ff')
                                 : (theme === 'dark' ? '#1e4a3a' : '#a8e6cf'),
                             borderRadius: '5px',
                             color: theme === 'dark' ? '#e0e0e0' : 'inherit'
                           }}>
                             <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>
-                              {pend < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
+                              {neto < 0 ? 'Saldo a Favor' : 'Total Pendiente'}
                               {cuentaCorriente.saldoInicial && parseFloat(cuentaCorriente.saldoInicial.monto || 0) !== 0 && (
                                 <span style={{ marginLeft: '4px', fontSize: '10px', fontStyle: 'italic' }}>
                                   (inc. saldo inicial)
@@ -1717,19 +1722,14 @@ function Clientes({ onNavigate }) {
                             <div style={{ 
                               fontSize: '16px', 
                               fontWeight: 'bold', 
-                              color: pend > 0 
+                              color: neto > 0 
                                 ? '#dc3545' 
-                                : pend < 0
+                                : neto < 0
                                   ? '#17a2b8'
                                   : '#28a745' 
                             }}>
-                              {pend < 0 ? formatearMonedaConSimbolo(saldoAFavorTotal) : formatearMonedaConSimbolo(pend)}
+                              {neto < 0 ? formatearMonedaConSimbolo(Math.abs(neto)) : formatearMonedaConSimbolo(neto)}
                             </div>
-                            {creditoRestante > 0 && pend >= 0 && (
-                              <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 'bold', color: '#17a2b8' }}>
-                                💚 Saldo a favor disponible: {formatearMonedaConSimbolo(creditoRestante)}
-                              </div>
-                            )}
                           </div>
                         );
                       })()}

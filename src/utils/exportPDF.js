@@ -410,10 +410,8 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
       : '';
     const textoBase = 'Saldo inicial';
     const montoSIAbs = Math.abs(montoSaldoInicial);
-    // Mostrar siempre en la columna DEBE. Si es a favor, lo mostramos como negativo para que se entienda.
-    const debeStr = esAFavor
-      ? `- ${formatearMonedaConSimbolo(montoSIAbs)}`
-      : formatearMonedaConSimbolo(montoSIAbs);
+    // Mostrar siempre en la columna DEBE (sin signo).
+    const debeStr = formatearMonedaConSimbolo(montoSIAbs);
     filasSaldoInicial = [[
       'S.I.',
       fechaRef,
@@ -640,25 +638,17 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
   let yResumen = yPosition + 22;
   doc.setFontSize(10);
   
-  // Total Facturado
+  // Total Facturado (si hay saldo inicial en contra, incluirlo para que el resumen cierre visualmente)
+  const deudaInicialResumen = montoSaldoInicial < 0 ? Math.abs(montoSaldoInicial) : 0;
+  const totalFacturadoMostrar = (cuentaCorriente.totales.total_remitos || 0) + deudaInicialResumen;
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
   doc.text('Total Facturado:', 15, yResumen);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(34, 45, 65);
-  doc.text(formatearMonedaConSimbolo(cuentaCorriente.totales.total_remitos || 0), 195, yResumen, { align: 'right' });
+  doc.text(formatearMonedaConSimbolo(totalFacturadoMostrar), 195, yResumen, { align: 'right' });
   yResumen += 7;
   
-  // Total Pagado: solo pagos reales (no incluir saldo inicial)
-  const totalPagadoMostrar = cuentaCorriente.totales.total_pagado || 0;
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-  doc.text('Total Pagado:', 15, yResumen);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(40, 167, 69);
-  doc.text(formatearMonedaConSimbolo(totalPagadoMostrar), 195, yResumen, { align: 'right' });
-  yResumen += 7;
-
   // Saldo pendiente: viene del backend (incluye saldo inicial con signo)
   const saldoPendiente = cuentaCorriente.totales.total_pendiente ?? calcularTotalesCuentaCorriente({
     totalRemitos: cuentaCorriente.totales.total_remitos || 0,
@@ -672,6 +662,17 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
     saldoInicialMonto: montoSaldoInicial,
     pagos: cuentaCorriente.pagos || []
   });
+
+  // Total Pagado (UI): efectivo + "saldo a favor aplicado"
+  const aplicadoSaldoFavor = totalesCalc.meta?.aplicadoSaldoAFavor || 0;
+  const totalPagadoMostrar = (cuentaCorriente.totales.total_pagado || 0) + aplicadoSaldoFavor;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
+  doc.text('Total Pagado:', 15, yResumen);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(40, 167, 69);
+  doc.text(formatearMonedaConSimbolo(totalPagadoMostrar), 195, yResumen, { align: 'right' });
+  yResumen += 7;
   // Si total_pendiente es negativo, saldo a favor = saldo neto; si no, mostrar crédito restante (si existe)
   const saldoAFavorMostrar = saldoPendiente < 0 ? Math.abs(saldoPendiente) : (totalesCalc.meta?.creditoRestante || 0);
   doc.setFont('helvetica', 'normal');

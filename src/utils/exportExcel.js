@@ -730,12 +730,14 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
   
   dataRow++;
   
-  // Total Facturado
+  // Total Facturado (si hay saldo inicial en contra, incluirlo para que el resumen cierre visualmente)
+  const deudaInicialResumenExcel = montoSaldoInicialExcel < 0 ? Math.abs(montoSaldoInicialExcel) : 0;
+  const totalFacturadoMostrarExcel = (cuentaCorriente.totales.total_remitos || 0) + deudaInicialResumenExcel;
   worksheet.getCell(`A${dataRow}`).value = 'Total Facturado:';
   worksheet.getCell(`A${dataRow}`).font = { bold: true };
   worksheet.getCell(`A${dataRow}`).border = borderStyle;
   worksheet.mergeCells(`B${dataRow}:H${dataRow}`);
-  worksheet.getCell(`B${dataRow}`).value = formatearMonedaConSimbolo(cuentaCorriente.totales.total_remitos || 0);
+  worksheet.getCell(`B${dataRow}`).value = formatearMonedaConSimbolo(totalFacturadoMostrarExcel);
   worksheet.getCell(`B${dataRow}`).alignment = { horizontal: 'right' };
   worksheet.getCell(`B${dataRow}`).font = { bold: true };
   worksheet.getCell(`B${dataRow}`).border = borderStyle;
@@ -755,8 +757,9 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
     });
   }
   
-  // Total Pagado: solo pagos reales (no incluir saldo inicial)
-  const totalPagadoMostrarExcel = cuentaCorriente.totales.total_pagado || 0;
+  // Total Pagado (UI): efectivo + "saldo a favor aplicado"
+  const aplicadoSaldoFavorExcel = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos || []);
+  const totalPagadoMostrarExcel = (cuentaCorriente.totales.total_pagado || 0) + aplicadoSaldoFavorExcel;
   worksheet.getCell(`A${dataRow}`).value = totalChequesRebotados > 0 ? 'Total Pagado (con cheques rebotados):' : 'Total Pagado:';
   worksheet.getCell(`A${dataRow}`).font = { bold: true };
   worksheet.getCell(`A${dataRow}`).border = borderStyle;
