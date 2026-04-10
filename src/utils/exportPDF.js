@@ -503,12 +503,12 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
       0: { cellWidth: 14, halign: 'center' }, // REMITO
       1: { cellWidth: 15 }, // FECHA
       2: { cellWidth: 16, halign: 'center' }, // CÓDIGO
-      3: { cellWidth: 50 }, // PRODUCTO/DETALLE (reducido para hacer espacio al código)
-      4: { cellWidth: 18, halign: 'right' }, // CANT.
+      3: { cellWidth: 38 }, // PRODUCTO
+      4: { cellWidth: 21, halign: 'right' }, // CANT.
       5: { cellWidth: 17, halign: 'right' }, // $ UNIT.
       6: { cellWidth: 20, halign: 'right', fontStyle: 'bold' }, // TOTAL
       7: { cellWidth: 20, halign: 'right', textColor: [40, 167, 69] }, // PAGA A CTA
-      8: { cellWidth: 21, halign: 'right', fontStyle: 'bold' } // DEBE
+      8: { cellWidth: 25, halign: 'right', fontStyle: 'bold' } // DEBE
     },
     // Colorear filas de pagos (verde normal, rojo si cheque rebotado) y agrupar remitos
     didParseCell: function(data) {

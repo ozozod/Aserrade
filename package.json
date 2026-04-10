@@ -1,6 +1,6 @@
 {
   "name": "aserradero-app",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Aplicación de gestión de remitos y cuentas corrientes para aserradero",
   "homepage": "./",
   "main": "main.js",

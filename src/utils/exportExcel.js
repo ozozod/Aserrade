@@ -288,12 +288,12 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
   worksheet.columns = [
     { key: 'remito', width: 18 },
     { key: 'fecha', width: 12 },
-    { key: 'producto', width: 45 }, // Aumentado para incluir detalles de remitos en pagos
-    { key: 'cant', width: 18 },
+    { key: 'producto', width: 38 },
+    { key: 'cant', width: 21 },
     { key: 'unit', width: 15 },
     { key: 'total', width: 18 },
     { key: 'pagaCta', width: 18 },
-    { key: 'debe', width: 18 }
+    { key: 'debe', width: 25 }
   ];
   
   // ========== TÍTULO ==========

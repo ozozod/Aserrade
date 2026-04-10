@@ -70,7 +70,7 @@ npm run build:electron
 ```
 
 El instalador se generará en la carpeta `dist/` con el nombre:
-- `Aserradero.App-2.1.2-Setup.exe` (según `version` en `package.json` / NSIS)
+- `Aserradero.App-2.1.3-Setup.exe` (según `version` en `package.json` / NSIS)
 
 **Nota:** El proceso completo puede tardar 10-20 minutos la primera vez.
 

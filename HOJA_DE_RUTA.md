@@ -4,7 +4,7 @@
 
 **Fecha de inicio**: Noviembre 2024 (desarrollo inicial)  
 **Estado actual**: ✅ Versión inicial completada  
-**Última actualización**: Abril 2026 — v2.1.2 (exports saldo inicial CANT/DEBE; Clientes/Reportes totales alineados)
+**Última actualización**: Abril 2026 — v2.1.3 (anchos columna PDF/Excel cuenta corriente)
 
 ---
 
@@ -417,6 +417,11 @@
 
 ---
 
+## ✅ Release 2.1.3 (Abril 2026)
+
+- [x] Versión **2.1.3** (`package.json`): instalador `Aserradero.App-2.1.3-Setup.exe` (electron-builder)
+- [x] PDF/Excel cuenta corriente: anchos **PRODUCTO 38**, **CANT. 21**, **DEBE 25**
+
 ## ✅ Release 2.1.2 (Abril 2026)
 
 - [x] Versión **2.1.2** (`package.json`): instalador `Aserradero.App-2.1.2-Setup.exe` (electron-builder)
@@ -443,5 +448,5 @@
 - [x] `App.js`: ya no bloquea el arranque por inicialización legacy del cliente cloud
 - [x] `config.json.example` sin secretos; `config:get` sin credenciales
 
-*Última actualización: Abril 2026 — v2.1.2; MySQL Hostinger como backend único*
+*Última actualización: Abril 2026 — v2.1.3; MySQL Hostinger como backend único*
 
