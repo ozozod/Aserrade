@@ -367,10 +367,13 @@ export const exportCuentaCorrienteExcel = async (cliente, cuentaCorriente) => {
     const textoBase = 'Saldo inicial';
     filaSaldo.getCell(1).value = 'SALDO INICIAL';
     filaSaldo.getCell(3).value = `${textoBase}${fechaRef ? ' al ' + fechaRef : ''}`;
+    const montoFmt = formatearMonedaConSimbolo(Math.abs(montoSaldo));
     if (esAFavor) {
-      filaSaldo.getCell(7).value = formatearMonedaConSimbolo(Math.abs(montoSaldo));
+      filaSaldo.getCell(4).value = montoFmt;
+      filaSaldo.getCell(8).value = '';
     } else {
-      filaSaldo.getCell(8).value = formatearMonedaConSimbolo(Math.abs(montoSaldo));
+      filaSaldo.getCell(4).value = '';
+      filaSaldo.getCell(8).value = montoFmt;
     }
     
     // Estilos: azul si es a favor, rojo si es en contra

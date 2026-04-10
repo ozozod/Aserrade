@@ -966,21 +966,26 @@ function Reportes({ clienteIdFromClientes }) {
             </div>
           )}
 
-          {/* Resumen mejorado con cálculo correcto de total pagado */}
+          {/* Resumen: misma base que PDF/backend (no usar solo remitosFiltrados — rompe la cuenta si hay filtros o pagos sueltos) */}
           {(() => {
-            const totalRemitosReal = remitosFiltrados.reduce((sum, remito) => {
-              return sum + parseFloat(remito.precio_total || 0);
-            }, 0);
-            
-            // Saldo inicial: en contra se suma a Total Pendiente; no se suma a Total Pagado (Total Pagado = solo pagos reales)
             const montoSI = cuentaCorriente.saldoInicial ? parseFloat(cuentaCorriente.saldoInicial.monto || 0) : 0;
-            const pagosReales = remitosFiltrados.reduce((sum, remito) => {
-              return sum + parseFloat(remito.monto_pagado || 0);
-            }, 0);
+            const totalesBase = cuentaCorriente.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
             const aplicadoSaldoFavor = sumarPagosSaldoAFavorAplicado(cuentaCorriente.pagos || []);
-            // "Total Pagado" en UI = efectivo + saldo a favor aplicado
-            const totalPagadoReal = (parseFloat(pagosReales) || 0) + (parseFloat(aplicadoSaldoFavor) || 0);
-            
+            const totalesGenerales = calcularTotalesCuentaCorriente({
+              totalRemitos: totalesBase.total_remitos ?? 0,
+              totalPagado: totalesBase.total_pagado ?? 0,
+              saldoInicialMonto: montoSI,
+              pagos: cuentaCorriente.pagos || []
+            });
+            const pend = totalesGenerales.total_pendiente || 0;
+            const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
+            const neto = (parseFloat(pend) || 0) - (parseFloat(creditoRestante) || 0);
+
+            // Alineado con export PDF: facturado incluye deuda inicial; pagado = efectivo backend + aplicado
+            const deudaInicialResumen = montoSI < 0 ? Math.abs(montoSI) : 0;
+            const totalRemitosReal = (parseFloat(totalesBase.total_remitos) || 0) + deudaInicialResumen;
+            const totalPagadoReal = (parseFloat(totalesBase.total_pagado) || 0) + (parseFloat(aplicadoSaldoFavor) || 0);
+
             let totalChequesRebotados = 0;
             if (cuentaCorriente.pagos) {
               cuentaCorriente.pagos.forEach(pago => {
@@ -992,20 +997,6 @@ function Reportes({ clienteIdFromClientes }) {
                 }
               });
             }
-            
-            // Regla única: usar totales del servicio (incluye adelantos/pagos no asociados a remitos)
-            const totalesBase = cuentaCorriente.totales || { total_remitos: 0, total_pagado: 0, total_pendiente: 0 };
-            const totalesGenerales = calcularTotalesCuentaCorriente({
-              totalRemitos: totalesBase.total_remitos ?? 0,
-              totalPagado: totalesBase.total_pagado ?? 0,
-              saldoInicialMonto: montoSI,
-              pagos: cuentaCorriente.pagos || []
-            });
-            const pend = totalesGenerales.total_pendiente || 0;
-            const creditoRestante = totalesGenerales.meta?.creditoRestante || 0;
-            // Saldo neto que le importa al usuario:
-            // si hay crédito disponible, se usa para cubrir la deuda y el resto queda "a favor".
-            const neto = (parseFloat(pend) || 0) - (parseFloat(creditoRestante) || 0);
             
             return (
               <div className="card" style={{ 

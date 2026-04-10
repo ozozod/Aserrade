@@ -410,18 +410,19 @@ export const exportCuentaCorrientePDF = async (cliente, cuentaCorriente) => {
       : '';
     const textoBase = 'Saldo inicial';
     const montoSIAbs = Math.abs(montoSaldoInicial);
-    // Mostrar siempre en la columna DEBE (sin signo).
-    const debeStr = formatearMonedaConSimbolo(montoSIAbs);
+    const montoStr = formatearMonedaConSimbolo(montoSIAbs);
+    const cantStr = esAFavor ? montoStr : '';
+    const debeStr = esAFavor ? '' : montoStr;
     filasSaldoInicial = [[
       'S.I.',
       fechaRef,
       '',
       textoBase,
+      cantStr,
       '',
       '',
       '',
-      '',      // PAGA A CTA (saldo inicial se muestra en DEBE)
-      debeStr  // DEBE
+      debeStr
     ]];
   }
   

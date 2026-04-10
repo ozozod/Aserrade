@@ -1668,7 +1668,11 @@ function Clientes({ onNavigate }) {
                       }}>
                         <div style={{ fontSize: '12px', color: theme === 'dark' ? '#999' : '#666' }}>Total Remitos</div>
                         <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                          {formatearMonedaConSimbolo(cuentaCorriente.totales.total_remitos)}
+                          {(() => {
+                            const mSi = cuentaCorriente.saldoInicial ? parseFloat(cuentaCorriente.saldoInicial.monto || 0) : 0;
+                            const deudaIni = mSi < 0 ? Math.abs(mSi) : 0;
+                            return formatearMonedaConSimbolo((parseFloat(cuentaCorriente.totales?.total_remitos) || 0) + deudaIni);
+                          })()}
                         </div>
                       </div>
                       <div style={{
